@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Agent System</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+    <h1>Welcome to the AI Agent System</h1>
+    
+    <form id="configForm" method="POST" action="/configure">
+        <label for="orchestratorModel">Orchestrator Model:</label>
+        <select id="orchestratorModel" name="orchestrator_model" required>
+            <option value="claude-v1.3">Claude v1.3 - Anthropic's flagship model</option>
+        </select>
+        <br>
+        <label for="refinerModel">Refiner Model:</label>  
+        <select id="refinerModel" name="refiner_model" required>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo - OpenAI's efficient model</option>
+            <option value="gpt-4">GPT-4 - OpenAI's advanced model</option>
+            <option value="claude-instant-v1">Claude Instant v1 - Anthropic's fast model</option>
+            <option value="t5-xxl">T5-XXL - Google's text-to-text model</option>
+            <option value="flan-t5-xxl">FLAN-T5-XXL - Google's instruction-based model</option>
+        </select>
+        <br>
+        <label for="subagentModel">Sub-Agent Model:</label>
+        <select id="subagentModel" name="subagent_model" required>  
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo - OpenAI's capable model</option>
+            <option value="gpt-4">GPT-4 - OpenAI's advanced model</option>
+            <option value="claude-v1">Claude v1 - Anthropic's reliable model</option>
+            <option value="alpaca-3b">Alpaca 3B - Stanford's efficient model</option>
+            <option value="gpt-j-6b">GPT-J-6B - EleutherAI's open-source model</option>
+        </select>
+        <br>
+        <label for="goal">Goal:</label>
+        <input type="text" id="goal" name="goal" required>
+        <br>
+        <label>Orchestration Strategy:</label><br>
+        <input type="radio" id="strategy1" name="orchestration_strategy" value="Strategy 1" required>
+        <label for="strategy1">Strategy 1 - Sequential execution with refinement</label><br>
+        <input type="radio" id="strategy2" name="orchestration_strategy" value="Strategy 2">
+        <label for="strategy2">Strategy 2 - Parallel execution with voting</label><br>
+        <input type="radio" id="strategy3" name="orchestration_strategy" value="Strategy 3">
+        <label for="strategy3">Strategy 3 - Hierarchical execution with error checking</label><br>
+        <input type="radio" id="strategy4" name="orchestration_strategy" value="Strategy 4">
+        <label for="strategy4">Strategy 4 - Iterative execution with dynamic resource allocation</label><br>
+        <br>
+        <button type="submit">Configure</button>
+    </form>
+    
+    <form id="runForm" method="POST" action="/run">
+        <button type="submit">Run Agent System</button>  
+    </form>
+
+    <div id="resultDiv"></div>
+
+    <script>
+        // ... (JavaScript code remains the same)
+    </script>
+</body>
+</html>

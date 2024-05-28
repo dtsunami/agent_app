@@ -1,0 +1,31 @@
+:root {
+    --bg-color: #222;
+    --text-color: #eee;  
+    --primary-color: #007bff;
+    --secondary-color: #6c757d;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: Arial, sans-serif;
+}
+
+h1 {
+    color: var(--primary-color);
+}
+
+button {
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    border: none;  
+    padding: 10px;
+    cursor: pointer;
+}
+
+select, input[type="text"] {
+    background-color: var(--bg-color);
+    color: var(--text-color);  
+    border: 1px solid var(--secondary-color);
+    padding: 5px;
+}
