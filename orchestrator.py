@@ -22,6 +22,8 @@ from rich.panel import Panel
 
 from agents import openai_client, anthropic_client, tavily_client
 
+from anthropic import RateLimitError
+
 #---------------------------------------------------------------------------------
 # Agent Configuration Models
 #---------------------------------------------------------------------------------
@@ -99,11 +101,19 @@ def query_orchestrator(agent: AgentConfig):
     
     orch_response = None
     if 'claude' in agent.model.orchestrator:
-        orch_response = anthropic_client.messages.create(
-            model=agent.model.orchestrator,
-            max_tokens=agent.model.orch_max_tokens,
-            messages=messages
-        )
+        while True:
+            try:
+                orch_response = anthropic_client.messages.create(
+                    model=agent.model.orchestrator,
+                    max_tokens=agent.model.orch_max_tokens,
+                    messages=messages
+                )
+                break
+            except RateLimitError as e:
+                console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                time.sleep(60)
+
+
     elif 'gpt' in agent.model.orchestrator:
         raise NotImplementedError("GPT-4 is not yet supported")
     else:
@@ -165,28 +175,36 @@ def query_search_provider(query: str, provider: str = "tavily"):
 def refine_output(agent: AgentConfig):
     console.print(f"\n[bold]Refining the final output[/bold]")
 
+    subtask_str = '\n'.join([r for _, r in agent.subtask_results])
     refiner_prompt = [
         f"Objective: {agent.objective}\n\n",
-        f"Sub-task results:\n{'\n'.join([r for _, r in agent.subtask_results])}\n\n",
+        f"Sub-task results:\n{subtask_str}\n\n",
         "Please review the sub-task results and refine them into a cohesive final output. ",
         "Add any missing documenation or details as needed. ",
         "Provide a relevent, brief and descriptive name for the project and include it in the final output in the format <project_name>name</project_name>. ",
-        "IF THE PROJECT IS A CODING PROJECT, INCLUDE THE FOLLOWING:\n",
+        "INCLUDE THE FOLLOWING:\n",
         "1. Folder Structure: Provide the folder structure as a valid JSON object, ",
         "where each key represents a folder or file, and nested keys represent subfolders. ",
         "Use null values for files. Ensure the JSON is properly formatted without any syntax errors. ",
         "Please make sure all keys are enclosed in double quotes, and ensure objects are correctly encapsulated with braces, "
         "separating items with commas as necessary. Wrap the JSON object in <folder_structure> tags.\n",
-        "2. Code Files: For each code file, include ONLY the file name not path, wrap the file contents in tags like this <file name='filename'>contents</file>. ",
+        "2. Code, Data or Image Files: For each  file, include ONLY THE FILE NAME AND NOT THE PATH, wrap the file contents in tags like this <file name='filename'>contents</file>. ",
         ]
     messages = [{"role": "user", "content": [{"type": "text", "text": "".join(refiner_prompt)}]}]
 
     if "claude" in agent.model.refiner:
-        refiner_response = anthropic_client.messages.create(
-            model=agent.model.refiner,
-            max_tokens=agent.model.refine_max_tokens,
-            messages=messages
-        )
+        while True:
+            try:
+                refiner_response = anthropic_client.messages.create(
+                    model=agent.model.refiner,
+                    max_tokens=agent.model.refine_max_tokens,
+                    messages=messages
+                )
+                break
+            except RateLimitError as e:
+                console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                time.sleep(60)
+
     else:
         raise ValueError(f"Unsupported refiner model: {agent.model.refiner}")
     
@@ -199,6 +217,7 @@ def refine_output(agent: AgentConfig):
 # Run the orchestrator to complete the objective
 #---------------------------------------------------------------------------------
 
+import time
 
 def run_orchestrator_loop(agent: AgentConfig):
     console.print("\n[bold]Starting orchestrator loop[/bold]")
@@ -243,12 +262,18 @@ def run_orchestrator_loop(agent: AgentConfig):
         
         # call the subagent
         if "claude" in agent.model.subagent:
-            subagent_response = anthropic_client.messages.create(
-                model=agent.model.subagent,
-                max_tokens=agent.model.sub_max_tokens,
-                messages=subtask_messages,
-                system=system_message
-            )
+            while True:
+                try:
+                    subagent_response = anthropic_client.messages.create(
+                        model=agent.model.subagent,
+                        max_tokens=agent.model.sub_max_tokens,
+                        messages=subtask_messages,
+                        system=system_message
+                    )
+                    break
+                except RateLimitError as e:
+                    console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                    time.sleep(60)
         else:
             raise ValueError(f"Unsupported subagent model: {agent.model.subagent}")
         
@@ -262,8 +287,7 @@ def run_orchestrator_loop(agent: AgentConfig):
     # Call the refiner
     final_output = refine_output(agent)
 
-    with open(f"final_output_{datetime.now().strftime('%Y%m%d%H%M%S')}.txt", "w") as f:
-        f.write(final_output)
+
     # Process the final output
     zip_bytes = extract_output(final_output)
 
@@ -274,6 +298,7 @@ def run_orchestrator_loop(agent: AgentConfig):
 # Extract the final output into a zip file
 #---------------------------------------------------------------------------------
 
+
 def extract_output(refined_output: str):
     console.print(f"\n[bold]Extracting the final output[/bold]")
 
@@ -281,41 +306,85 @@ def extract_output(refined_output: str):
     project_name = refined_output.split("<project_name>")[1].split("</project_name>")[0]
     console.print(f"[green]Project Name : {project_name}[/green]")
 
+    with open(f"final_output{project_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.md", "w") as f:
+        f.write(refined_output)
+    
     # extract the folder structure
-    folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+    folder_structure = None
+    if "<folder_structure>" in refined_output:
+        folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+        
+        # extract the files
+        files = {}
+        def walk_folder(name, entry, files):
+            if isinstance(entry, dict):
+                for key, value in entry.items():
+                    walk_folder(key, value, files)
+            else:
+                if f"<file name='{name}'>" not in refined_output:
+                    console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
+                    return None
+                file_contents = refined_output.split(f"<file name='{name}'>")[1].split("</file>")[0]
+                files[name] = file_contents
+        
+        walk_folder(project_name, folder_structure, files)
     
-    # extract the files
-    files = {}
-    def walk_folder(name, entry, files):
-        if isinstance(entry, dict):
-            for key, value in entry.items():
-                walk_folder(key, value, files)
-        else:
-            if f"<file name='{name}'>" not in refined_output:
-                console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
-                return None
-            file_contents = refined_output.split(f"<file name='{name}'>")[1].split("</file>")[0]
-            files[name] = file_contents
-    
-    walk_folder(project_name, folder_structure, files)
-    
-    import io
-    import zipfile
+        import io
+        import zipfile
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-        for file_name, data in files.items():
-            zip_file.writestr(file_name, data)
-        zip_file.writestr("folder_structure.json", json.dumps(folder_structure, indent=4))
-        zip_file.writestr("final_output.txt", refined_output)
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for file_name, data in files.items():
+                zip_file.writestr(file_name, data)
+            zip_file.writestr("folder_structure.json", json.dumps(folder_structure, indent=4))
+            zip_file.writestr("final_output.txt", refined_output)
 
-            
-    with open(f'./output/{project_name}.zip', 'wb') as f:
-        f.write(zip_buffer.getvalue())
+                
+        with open(f'./output/{project_name}.zip', 'wb') as f:
+            f.write(zip_buffer.getvalue())
 
-    return zip_buffer.getvalue()        
+        return zip_buffer.getvalue()
+    else:
+        return None 
     
+
+#---------------------------------------------------------------------------------
+# Run orchestrator as script
+#---------------------------------------------------------------------------------
+
+
+def run():
+    #objective = input("Enter the objective : ")
+    objective = "Build a web app using fastapi, css and html allows user to run AI agent system. "
+    objective += "Include detailed documentaion on how to install, run and contribute. "
+    objective += "Structure each session's data as a pydandic BaseModel for easy storing and retrieval in a database. "
+    objective += "Allow the user to select the orchestrator, sub-agent and refiner model versions. "
+    objective += "Search the web to make sure you include all the latest and most relevant AI models. "
+    objective += "The theme should be dark and user interface calm and relaxing and using best pratices for web design. "
+    objective += "The user should provide an objective, make the input for the objective take up most of the page. "
+    
+
+    model = ModelConfig(orchestrator="claude-3-opus-20240229",
+                        refiner="claude-3-opus-20240229",
+                        subagent="claude-3-opus-20240229",
+                        orch_max_tokens=4096,
+                        sub_max_tokens=4096,
+                        refine_max_tokens=4096,
+                        max_iter=30,
+                        strategy="FixedPointIteration")
+    agent = AgentConfig(objective=objective,
+                        subtask_results=[],
+                        files={},
+                        use_search=True,
+                        include_files=False,
+                        model=model)
+    result, search_query = run_orchestrator_loop(agent)
+    
+
+if __name__ == "__main__":
+    run()
 
 #---------------------------------------------------------------------------------
 # Done :)
 #---------------------------------------------------------------------------------
+

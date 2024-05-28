@@ -16,10 +16,10 @@ def test_orchestrator_query_claude_opus():
     objective += "Use the most recent data available and spare no detail."
     model = ModelConfig(orchestrator="claude-3-opus-20240229",
                         refiner="claude-3-opus-20240229",
-                        subagent="claude-3-haiku-20240229",
+                        subagent="claude-3-haiku-20240307",
                         orch_max_tokens=4096,
                         sub_max_tokens=4096,
-                        refine_max_tokens=4096 * 2,
+                        refine_max_tokens=4096,
                         max_iter=5,
                         strategy="FixedPointIteration")
     agent = AgentConfig(objective=objective,
