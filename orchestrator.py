@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from rich.console import Console
 from rich.panel import Panel
 
-from agents import openai_client, anthropic_client, tavily_client
+from agents import openai_client, anthropic_client, tavily_client, genai
 
 from anthropic import RateLimitError
 
@@ -108,19 +108,22 @@ def query_orchestrator(agent: AgentConfig):
                     max_tokens=agent.model.orch_max_tokens,
                     messages=messages
                 )
+                response_text = orch_response.content[0].text
                 break
             except RateLimitError as e:
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                 time.sleep(60)
 
-
+    elif 'gemini' in agent.model.orchestrator:
+        model = genai.GenerativeModel(agent.model.orchestrator)
+        orch_response = model.generate_content("".join(orch_prompt))
+        response_text = orch_response.text
     elif 'gpt' in agent.model.orchestrator:
         raise NotImplementedError("GPT-4 is not yet supported")
     else:
         raise ValueError(f"Unsupported orchestrator model: {agent.model.orchestrator}") 
     
     # response text
-    response_text = orch_response.content[0].text
     response_pnl = Panel(response_text, 
                         title=f"[bold green]Orchestrator[/bold green]", 
                         title_align="", 
@@ -143,7 +146,7 @@ def query_orchestrator(agent: AgentConfig):
 
 #---------------------------------------------------------------------------------
 # Search current data for the next task
-#---------------------------------------------------------------------------------
+#------------orch_prompt---------------------------------------------------------------------
 from requests.exceptions import HTTPError
 
 def query_search_provider(query: str, provider: str = "tavily"):
@@ -169,9 +172,7 @@ def query_search_provider(query: str, provider: str = "tavily"):
 
 #---------------------------------------------------------------------------------
 # Query the refiner for final output
-#---------------------------------------------------------------------------------
-
-
+#----------------------------------------------------------------idx_try
 def refine_output(agent: AgentConfig):
     console.print(f"\n[bold]Refining the final output[/bold]")
 
@@ -193,6 +194,7 @@ def refine_output(agent: AgentConfig):
     messages = [{"role": "user", "content": [{"type": "text", "text": "".join(refiner_prompt)}]}]
 
     if "claude" in agent.model.refiner:
+        idx_try = 0
         while True:
             try:
                 refiner_response = anthropic_client.messages.create(
@@ -200,16 +202,23 @@ def refine_output(agent: AgentConfig):
                     max_tokens=agent.model.refine_max_tokens,
                     messages=messages
                 )
+                refined_output = refiner_response.content[0].text
                 break
             except RateLimitError as e:
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                idx_try += 1
+                if idx_try > 3:
+                    break
                 time.sleep(60)
-
+    elif "gemini" in agent.model.refiner:
+        model = genai.GenerativeModel(agent.model.refiner)
+        ref_response = model.generate_content("".join(refiner_prompt))
+        refined_output = ref_response.text
+    elif 'gpt' in agent.model.refiner:
+        raise ValueError(f"Unsupported refiner model: {agent.model.refiner}")
     else:
         raise ValueError(f"Unsupported refiner model: {agent.model.refiner}")
-    
-    refined_output = refiner_response.content[0].text
-    
+
     return refined_output
 
 
@@ -237,7 +246,6 @@ def run_orchestrator_loop(agent: AgentConfig):
             orch_response, search_query = query_orchestrator(agent)
         
         if "Objective Complete:" in orch_response:
-            console.print(f"\n[bold green]Objective Complete[/bold green]")
             break
  
         # create a subtask query
@@ -256,6 +264,7 @@ def run_orchestrator_loop(agent: AgentConfig):
         subtask_messages = [{"role": "user", "content": [{"type": "text", "text": subtask_query}]}]
 
         # add in the search query if needed
+        search_result = None
         if agent.use_search and search_query is not None:
             search_result = query_search_provider(search_query)
             subtask_messages[0]["content"].append({"type": "text", "text": f"\nSearch Results:\n{search_result}"})
@@ -270,18 +279,25 @@ def run_orchestrator_loop(agent: AgentConfig):
                         messages=subtask_messages,
                         system=system_message
                     )
+                    subtask_result = subagent_response.content[0].text
                     break
                 except RateLimitError as e:
                     console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                     time.sleep(60)
+        elif 'gemini' in agent.model.subagent:
+            model = genai.GenerativeModel(agent.model.subagent)
+            subtask_prompt = f"prompt:\n {subtask_query}\n\n{system_message}\n\n"
+            if search_result is not None:
+                subtask_prompt += f"Search Results: {search_result}"
+            subagent_response = model.generate_content("".join(subtask_prompt))
+            subtask_result = subagent_response.text
         else:
             raise ValueError(f"Unsupported subagent model: {agent.model.subagent}")
         
-        if subagent_response.usage.output_tokens >= agent.model.sub_max_tokens:
-            console.print(f"\n[bold red]Subagent response exceeded max tokens[/bold red]")
-            # TODO: should recover from output truncation?
+        #if subagent_response.usage.output_tokens >= agent.model.sub_max_tokens:
+        #    console.print(f"\n[bold red]Subagent response exceeded max tokens[/bold red]")
+        #    # TODO: should recover from output truncation?
         
-        subtask_result = subagent_response.content[0].text
         agent.subtask_results.append((subtask_query, subtask_result))
     
     # Call the refiner
@@ -364,9 +380,9 @@ def run():
     objective += "The user should provide an objective, make the input for the objective take up most of the page. "
     
 
-    model = ModelConfig(orchestrator="claude-3-opus-20240229",
-                        refiner="claude-3-opus-20240229",
-                        subagent="claude-3-opus-20240229",
+    model = ModelConfig(orchestrator="gemini-1.5-pro",
+                        refiner="gemini-1.5-pro",
+                        subagent="gemini-1.5-pro",
                         orch_max_tokens=4096,
                         sub_max_tokens=4096,
                         refine_max_tokens=4096,
@@ -385,6 +401,6 @@ if __name__ == "__main__":
     run()
 
 #---------------------------------------------------------------------------------
-# Done :)
+# Done :)orch_response
 #---------------------------------------------------------------------------------
 

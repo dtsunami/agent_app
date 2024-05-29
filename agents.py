@@ -7,9 +7,14 @@
 #        will be used by the AI Agent application.
 #---------------------------------------------------------------------------------
 
+
 #---------------------------------------------------------------------------------
 # Import the required libraries
+# gemini-1.5-pro
+# gemini-1.5-flash
+# gemini-1.0-pro
 #---------------------------------------------------------------------------------
+
 
 import os
 import re
@@ -24,6 +29,8 @@ from tavily import TavilyClient
 
 from openai import OpenAI
 
+import google.generativeai as genai
+
 #---------------------------------------------------------------------------------
 # Instantiate the clients for the various LLMs
 #---------------------------------------------------------------------------------
@@ -31,7 +38,7 @@ from openai import OpenAI
 openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
-
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 #---------------------------------------------------------------------------------
 # Run the appropriate model for task instructions
@@ -44,6 +51,5 @@ async def run_model(model_name: str, instructions: str, previous_tasks: dict[str
     return f"({model_name}) output for goal: {goal}"
 
 
-#---------------------------------------------------------------------------------
-# Done :)
+#----------------------------------------------------------------------(and never were)
 #---------------------------------------------------------------------------------

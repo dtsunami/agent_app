@@ -10,3 +10,4 @@ tavily-python
 ollama
 groq
 openai
+google-generativeai
