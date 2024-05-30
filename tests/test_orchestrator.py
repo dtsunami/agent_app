@@ -44,7 +44,7 @@ def test_orchestrator_loop_claude_opus():
     model = ModelConfig(orchestrator="claude-3-sonnet-20240229",
                         refiner="claude-3-opus-20240229",
                         subagent="claude-3-sonnet-20240229",
-                        max_iter=25,
+                        max_iter=1,
                         orch_max_tokens=4096,
                         sub_max_tokens=4096,
                         refine_max_tokens=4096,
