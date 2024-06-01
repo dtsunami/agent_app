@@ -16,7 +16,21 @@ import asyncio
 
 from datetime import datetime
 
+from typing import Any
+from typing import Dict
+from typing import Annotated
+from typing import Union
+
+import numpy as np
+import pandas as pd
+import os
+
 from pydantic import BaseModel
+from pydantic import Field
+from pydantic import PlainSerializer
+from pydantic import AfterValidator
+from pydantic import WithJsonSchema
+
 from rich.console import Console
 from rich.panel import Panel
 
@@ -31,24 +45,64 @@ import io
 import zipfile
 
 
+from bson import ObjectId
+
+
+
+orch_base_prompt = '''
+Assess if the Objective has been fully achieved and if not, breakdown the next subtask.
+Please select the next subtask that most advances the obective and create a clear, 
+encouraging and comprehensive prompt for a subagent to execute that subtask.
+ALWAYS CHECK CODE FOR ERRORS AND USE THE BEST PRACTICES FOR CODING TASKS AND INCLUDE FIXES FOR THE NEXT SUBTASK.",
+If you have any sugestions on how code can be improved or refactored, please include them in the next subtask prompt
+If the objective is not yet fully achieved, select the next most appropriate subtask
+and create a clear and comprehensive prompt for a subagent to execute that subtask.
+'''
+
+refiner_base_prompt = '''
+Please review the sub-task and baseline results and refine them into a cohesive final output.
+Add any missing documenation or details as needed.
+'''
+
 # --------------------------------------------------------------------------------
 # Agent Configuration Models
 # --------------------------------------------------------------------------------
 
 
+def validate_object_id(v: Any) -> ObjectId:
+    if isinstance(v, ObjectId):
+        return v
+    if ObjectId.is_valid(v):
+        return ObjectId(v)
+    raise ValueError("Invalid ObjectId")
+
+
+PyObjectId = Annotated[
+    Union[str, ObjectId],
+    AfterValidator(validate_object_id),
+    PlainSerializer(lambda x: str(x), return_type=str),
+    WithJsonSchema({"type": "string"}, mode="serialization"),
+]
+
+
 class ModelConfig(BaseModel):
-    orchestrator: str
-    refiner: str
-    subagent: str
-    strategy: str
+    orchestrator_model: str = Field(...)
+    refiner_model: str = Field(...)
+    subagent_model: str = Field(...)
+    orchestrator_prompt: str = orch_base_prompt
+    refiner_prompt: str = refiner_base_prompt
+    strategy: str = Field(...)
     task_iter: int = 5
     refine_iter: int = 3
     orch_max_tokens: int = 4096
     sub_max_tokens: int = 4096
     refine_max_tokens: int = 4096
 
+
 class AgentConfig(BaseModel):
-    objective: str
+    id: PyObjectId = Field(default_factory=ObjectId, alias="_id")
+    name: str = Field(...)
+    objective: str = Field(...)
     subtask_queries: dict[int, list[str]] = {}
     subtask_results: dict[int, list[str]] = {}
     era_results: list[str] = []
@@ -57,6 +111,10 @@ class AgentConfig(BaseModel):
     include_files: bool = False
     model: ModelConfig
 
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
 
 # --------------------------------------------------------------------------------
 # Initialize the console
@@ -73,7 +131,7 @@ console = Console(record=True)
 
 
 def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
-    console.print(f"\n[bold]Query orchestrator model: {agent.model.orchestrator}[/bold]")
+    console.print(f"\n[bold]Query orchestrator model: {agent.model.orchestrator_model}[/bold]")
 
     results_str = "None"
     if era_output is not None:
@@ -88,15 +146,9 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
         "In order to fully, correctly and comprehensively complete the Objective, ",
         f"{' and using the file content ' if agent.include_files else ''}",
         f"{' without forgetting anything from the previous subtask results, ' if len(results_str) > 0 else ''}",
-        "Assess if the Objective has been fully achieved and if not, breakdown the next subtask. ",
-        "Please select the next subtask that most advances the obective ",
-        "and create a clear, encouraging and comprehensive prompt for a subagent to execute that subtask. ",
-        "ALWAYS CHECK CODE FOR ERRORS AND USE THE BEST PRACTICES FOR CODING TASKS AND INCLUDE FIXES FOR THE NEXT SUBTASK.",
-        "If you have any sugestions on how code can be improved or refactored, please include them in the next subtask prompt. ",
-        "If the previous subtask results comprehensively complete all the requirements of the objective, ",
+        agent.model.orchestrator_prompt,
+        "If the previous subtask results comprehensively complete all the requirements of the objective ",
         "start your response with the phrase 'Objective Complete:'. ",
-        "If the objective is not yet fully achieved, select the next most appropriate subtask ",
-        "and create a clear and comprehensive prompt for a subagent to execute that subtask. ",
         f"\n\n**Objective:**\n{agent.objective}\n\n",
         f"\n\n**Results:**\n{results_str}\n\n\n",
         "IMPORTANT, YOUR JOB IS TO GENERATE A PROMPT FOR SUBAGENT IF THE OBJECTIVE IS NOT COMPLETE!!!!\n\n\n"
@@ -116,12 +168,12 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
 
     orch_str = "".join(orch_prompt)
     orch_response = None
-    if 'claude' in agent.model.orchestrator:
+    if 'claude' in agent.model.orchestrator_model:
         orch_messages = [{"role": "user", "content": [{"type": "text", "text": orch_str}]}]
         while True:
             try:
                 orch_response = anthropic_client.messages.create(
-                    model=agent.model.orchestrator,
+                    model=agent.model.orchestrator_model,
                     max_tokens=agent.model.orch_max_tokens,
                     messages=orch_messages
                 )
@@ -134,8 +186,8 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                 time.sleep(60)
 
-    elif 'gemini' in agent.model.orchestrator:
-        model = genai.GenerativeModel(agent.model.orchestrator)
+    elif 'gemini' in agent.model.orchestrator_model:
+        model = genai.GenerativeModel(agent.model.orchestrator_model)
         orch_response = model.generate_content("".join(orch_prompt), safety_settings=ggl_safety_settings)
         try:
             response_text = orch_response.text
@@ -146,10 +198,10 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
             console.print(f"\n[bold red]Finish Reason : {rch_response.candidates[0].finish_reason}[/bold red]")
             console.print(f"\n[bold red]Safety Ratings : {orch_response.candidates[0].safety_ratings}[/bold red]")
             response_text = "come again?"
-    elif 'gpt' in agent.model.orchestrator:
+    elif 'gpt' in agent.model.orchestrator_model:
         raise NotImplementedError("GPT-4 is not yet supported")
     else:
-        raise ValueError(f"Unsupported orchestrator model: {agent.model.orchestrator}")
+        raise ValueError(f"Unsupported orchestrator model: {agent.model.orchestrator_model}")
 
     # response text
     response_pnl = Panel(response_text, 
@@ -214,9 +266,8 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 
     refiner_prompt += [
         f"**Results:**\n{subtask_str}\n\n",
-        "**PROMPT:**\n\n"
-        "Please review the sub-task and baseline results and refine them into a cohesive final output. ",
-        "Add any missing documenation or details as needed. ",
+        "**PROMPT:**\n\n",
+        agent.model.refiner_prompt,
         "Provide a relevent, brief and descriptive name for the project and include it in the final output in the format <project_name>name</project_name>. ",
         "INCLUDE THE FOLLOWING:\n",
         "1. Folder Structure: Provide the folder structure as a valid JSON object, ",
@@ -228,13 +279,13 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
         ]
     refiner_str = "".join(refiner_prompt)
 
-    if "claude" in agent.model.refiner:
+    if "claude" in agent.model.refiner_model:
         idx_try = 0
         while True:
             try:
                 content = [{"type": "text", "text": refiner_str}]
                 refiner_response = anthropic_client.messages.create(
-                    model=agent.model.refiner,
+                    model=agent.model.refiner_model,
                     max_tokens=agent.model.refine_max_tokens,
                     messages=[{"role": "user", "content": content}]
                 )
@@ -272,7 +323,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 
                     content = [{"type": "text", "text": refiner_continue_prompt}]
                     refiner_response = anthropic_client.messages.create(
-                        model=agent.model.refiner,
+                        model=agent.model.refiner_model,
                         max_tokens=agent.model.refine_max_tokens,
                         messages=[{"role": "user", "content": content}]
                     )
@@ -297,14 +348,14 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
                 if idx_try > 3:
                     break
                 time.sleep(60)
-    elif "gemini" in agent.model.refiner:
-        model = genai.GenerativeModel(agent.model.refiner)
+    elif "gemini" in agent.model.refiner_model:
+        model = genai.GenerativeModel(agent.model.refiner_model)
         ref_response = model.generate_content("".join(refiner_prompt))
         refined_output = ref_response.text
-    elif 'gpt' in agent.model.refiner:
-        raise ValueError(f"Unsupported refiner model: {agent.model.refiner}")
+    elif 'gpt' in agent.model.refiner_model:
+        raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
     else:
-        raise ValueError(f"Unsupported refiner model: {agent.model.refiner}")
+        raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
 
 
     response_pnl = Panel(refined_output,
@@ -323,12 +374,12 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 
 def run_subtask_agent(agent: AgentConfig, subtask_query: str):
 
-    if "claude" in agent.model.subagent:
+    if "claude" in agent.model.subagent_model:
         while True:
             try:
                 subtask_messages = [{"role": "user", "content": [{"type": "text", "text": subtask_query}]}]
                 subagent_response = anthropic_client.messages.create(
-                    model=agent.model.subagent,
+                    model=agent.model.subagent_model,
                     max_tokens=agent.model.sub_max_tokens,
                     messages=subtask_messages
                 )
@@ -344,7 +395,7 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
                     subtask_messages = [{"role": "user", "content": [{"type": "text", "text": subagent_continue_prompt}]}]
                     console.print("[bold red]Warning truncated output, will try and continue ...[/bold red]")
                     subagent_response = anthropic_client.messages.create(
-                        model=agent.model.subagent,
+                        model=agent.model.subagent_model,
                         max_tokens=agent.model.sub_max_tokens,
                         messages=subtask_messages
                     )
@@ -356,9 +407,9 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
             except RateLimitError as e:
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                 time.sleep(60)
-    elif 'gemini' in agent.model.subagent:
+    elif 'gemini' in agent.model.subagent_model:
         # TODO: need to check this query and output tokens etc for google model
-        model = genai.GenerativeModel(agent.model.subagent)
+        model = genai.GenerativeModel(agent.model.subagent_model)
         subtask_prompt = f"**prompt:**\n\n{subtask_query}\n\n"
         subagent_response = model.generate_content("".join(subtask_prompt), safety_settings=ggl_safety_settings)
         try:
@@ -371,7 +422,7 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
             console.print(f"\n[bold red]Safety Ratings : {subagent_response.candidates[0].safety_ratings}[/bold red]")
             subtask_result = "come again?"
     else:
-        raise ValueError(f"Unsupported subagent model: {agent.model.subagent}")
+        raise ValueError(f"Unsupported subagent model: {agent.model.subagent_model}")
 
     response_pnl = Panel(subtask_result,
                          title="[bold orange]SubAgent Result[/bold orange]",
@@ -427,9 +478,9 @@ def generate_subtask_prompt(agent: AgentConfig, orch_response: str,
 def run_orchestrator_loop(agent: AgentConfig):
     console.print("\n[bold]Starting orchestrator loop[/bold]")
     console.print(f"[green]Strategy : {agent.model.strategy}[/green]")
-    console.print(f"[green]Orchestrator : {agent.model.orchestrator}[/green]")
-    console.print(f"[green]Subagent : {agent.model.subagent}[/green]")
-    console.print(f"[green]Refiner : {agent.model.refiner}[/green]")
+    console.print(f"[green]Orchestrator : {agent.model.orchestrator_model}[/green]")
+    console.print(f"[green]Subagent : {agent.model.subagent_model}[/green]")
+    console.print(f"[green]Refiner : {agent.model.refiner_model}[/green]")
 
     era_output = None
     orch_response = None
@@ -496,20 +547,21 @@ def extract_output(refined_output: str):
     project_name = refined_output.split("<project_name>")[1].split("</project_name>")[0]
     console.print(f"[green]Project Name : {project_name}[/green]")
 
-    with open(f"final_output{project_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.md", "w") as f:
+    with open(f"final/final_output_{project_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.md", "w") as f:
         f.write(refined_output)
-    
+
     # extract the folder structure
     folder_structure = None
     if "<folder_structure>" in refined_output:
         folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
-        
+
         # extract the files
         files = {}
         def walk_folder(name, entry, files):
             if isinstance(entry, dict):
                 for key, value in entry.items():
-                    walk_folder(key, value, files)
+                    walk_folder(f"{name}/{key}", value, files)
+                    walk_folder(f"{key}", value, files)
             else:
                 if f"<file name='{name}'>" not in refined_output:
                     console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
@@ -517,8 +569,7 @@ def extract_output(refined_output: str):
                 file_contents = refined_output.split(f"<file name='{name}'>")[1].split("</file>")[0]
                 files[name] = file_contents
 
-        walk_folder(project_name, folder_structure, files)
-
+        walk_folder("", folder_structure, files)
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
@@ -558,19 +609,54 @@ the configs. Include an requirements.txt file.
 Here are the pydantic models for agent and model config
 
 ```python
+
+from typing import Any
+from typing import Dict
+from typing import Annotated
+from typing import Union
+
+from pydantic import BaseModel
+from pydantic import Field
+from pydantic import PlainSerializer
+from pydantic import AfterValidator
+from pydantic import WithJsonSchema
+
+from bson import ObjectId
+
+def validate_object_id(v: Any) -> ObjectId:
+    if isinstance(v, ObjectId):
+        return v
+    if ObjectId.is_valid(v):
+        return ObjectId(v)
+    raise ValueError("Invalid ObjectId")
+
+
+PyObjectId = Annotated[
+    Union[str, ObjectId],
+    AfterValidator(validate_object_id),
+    PlainSerializer(lambda x: str(x), return_type=str),
+    WithJsonSchema({"type": "string"}, mode="serialization"),
+]
+
+
 class ModelConfig(BaseModel):
-    orchestrator: str
-    refiner: str
-    subagent: str
-    strategy: str
-    task_iter: int = 7
-    refine_iter: int = 5
+    orchestrator_model: str = Field(...)
+    refiner_model: str = Field(...)
+    subagent_model: str = Field(...)
+    orchestrator_prompt: str = orch_base_prompt
+    refiner_prompt: str = refiner_base_prompt
+    strategy: str = Field(...)
+    task_iter: int = 5
+    refine_iter: int = 3
     orch_max_tokens: int = 4096
     sub_max_tokens: int = 4096
     refine_max_tokens: int = 4096
 
+
 class AgentConfig(BaseModel):
-    objective: str
+    id: PyObjectId = Field(default_factory=ObjectId, alias="_id")
+    name: str = Field(...)
+    objective: str = Field(...)
     subtask_queries: dict[int, list[str]] = {}
     subtask_results: dict[int, list[str]] = {}
     era_results: list[str] = []
@@ -578,6 +664,11 @@ class AgentConfig(BaseModel):
     use_search: bool = False
     include_files: bool = False
     model: ModelConfig
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
 
 ```
 """
@@ -588,13 +679,13 @@ class AgentConfig(BaseModel):
     claude-3-haiku-20240307
     claude-3-sonnet-20240229
     '''
-    model = ModelConfig(orchestrator="claude-3-sonnet-20240229",
-                        refiner="claude-3-sonnet-20240229",
-                        subagent="gemini-1.5-pro-latest",
+    model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
+                        refiner_model="claude-3-sonnet-20240229",
+                        subagent_model="gemini-1.5-pro-latest",
                         task_iter=7,
                         refine_iter=5,
                         strategy="FixedPointIteration")
-    agent = AgentConfig(objective=objective, model=model)
+    agent = AgentConfig(name='AI Agent App', objective=objective, model=model)
 
     zip_bytes = run_orchestrator_loop(agent)
 
