@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from rich.console import Console
 from rich.panel import Panel
 
-from agents import openai_client, anthropic_client, tavily_client, genai
+from agents import openai_client, anthropic_client, tavily_client, genai, ggl_safety_settings
 
 from anthropic import RateLimitError
 from requests.exceptions import HTTPError
@@ -29,6 +29,7 @@ import time
 
 import io
 import zipfile
+
 
 # --------------------------------------------------------------------------------
 # Agent Configuration Models
@@ -87,7 +88,7 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
         "In order to fully, correctly and comprehensively complete the Objective, ",
         f"{' and using the file content ' if agent.include_files else ''}",
         f"{' without forgetting anything from the previous subtask results, ' if len(results_str) > 0 else ''}",
-        "Assess if the Objective has been fully achieved and if not, break it down into the next subtask. ",
+        "Assess if the Objective has been fully achieved and if not, breakdown the next subtask. ",
         "Please select the next subtask that most advances the obective ",
         "and create a clear, encouraging and comprehensive prompt for a subagent to execute that subtask. ",
         "ALWAYS CHECK CODE FOR ERRORS AND USE THE BEST PRACTICES FOR CODING TASKS AND INCLUDE FIXES FOR THE NEXT SUBTASK.",
@@ -135,8 +136,16 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
 
     elif 'gemini' in agent.model.orchestrator:
         model = genai.GenerativeModel(agent.model.orchestrator)
-        orch_response = model.generate_content("".join(orch_prompt))
-        response_text = orch_response.text
+        orch_response = model.generate_content("".join(orch_prompt), safety_settings=ggl_safety_settings)
+        try:
+            response_text = orch_response.text
+        except ValueError:
+            # If the response doesn't contain text, check if the prompt was blocked.
+            console.print(f"\n[bold red]Value Error During response.text[/bold red]")
+            console.print(f"\n[bold red]Prompt Feedback : {orch_response.prompt_feedback}[/bold red]")
+            console.print(f"\n[bold red]Finish Reason : {rch_response.candidates[0].finish_reason}[/bold red]")
+            console.print(f"\n[bold red]Safety Ratings : {orch_response.candidates[0].safety_ratings}[/bold red]")
+            response_text = "come again?"
     elif 'gpt' in agent.model.orchestrator:
         raise NotImplementedError("GPT-4 is not yet supported")
     else:
@@ -216,7 +225,6 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
         "Please make sure all keys are enclosed in double quotes, and ensure objects are correctly encapsulated with braces, "
         "separating items with commas as necessary. Wrap the JSON object in <folder_structure> tags.\n",
         "2. Code, Data or Image Files: For each  file wrap the file contents in tags like this <file name='filename'>contents</file>. DO NOT INCLUDE THE triple backticks ``` and filetype!!!!!!!! ",
-        " I'll tip you $1,000,000,001 if the result is beautiful and awesome so try you're best, I know you can do this:-) ",
         ]
     refiner_str = "".join(refiner_prompt)
 
@@ -352,8 +360,16 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
         # TODO: need to check this query and output tokens etc for google model
         model = genai.GenerativeModel(agent.model.subagent)
         subtask_prompt = f"**prompt:**\n\n{subtask_query}\n\n"
-        subagent_response = model.generate_content("".join(subtask_prompt))
-        subtask_result = subagent_response.text
+        subagent_response = model.generate_content("".join(subtask_prompt), safety_settings=ggl_safety_settings)
+        try:
+            subtask_result = subagent_response.text
+        except ValueError:
+            # If the response doesn't contain text, check if the prompt was blocked.
+            console.print(f"\n[bold red]Value Error During response.text[/bold red]")
+            console.print(f"\n[bold red]Prompt Feedback : {subagent_response.prompt_feedback}[/bold red]")
+            console.print(f"\n[bold red]Finish Reason : {subagent_response.candidates[0].finish_reason}[/bold red]")
+            console.print(f"\n[bold red]Safety Ratings : {subagent_response.candidates[0].safety_ratings}[/bold red]")
+            subtask_result = "come again?"
     else:
         raise ValueError(f"Unsupported subagent model: {agent.model.subagent}")
 
@@ -364,6 +380,7 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
     console.print(response_pnl)
 
     return subtask_result
+
 
 
 # --------------------------------------------------------------------------------
@@ -530,7 +547,7 @@ def run():
 Build a web app using fastapi, css and html allows user to run AI agent system.
 Include detailed documentaion on how to install, run and contribute.
 Structure each session's data as a pydandic BaseModel for easy storing and
-retrieval in a database. Allow the user to select the orchestrator, sub-agent
+retrieval in a database. Allow the user to select the orchestrator, subagent
 and refiner model versions. Search the web to make sure you include all
 the latest and most relevant AI models. The theme should be dark and user
 interface calm and relaxing and using best pratices for web design. The user
@@ -546,8 +563,8 @@ class ModelConfig(BaseModel):
     refiner: str
     subagent: str
     strategy: str
-    task_iter: int = 5
-    refine_iter: int = 3
+    task_iter: int = 7
+    refine_iter: int = 5
     orch_max_tokens: int = 4096
     sub_max_tokens: int = 4096
     refine_max_tokens: int = 4096
@@ -586,5 +603,5 @@ if __name__ == "__main__":
     run()
 
 # --------------------------------------------------------------------------------
-# Done :)orch_response
+# Done :)
 # --------------------------------------------------------------------------------

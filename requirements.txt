@@ -11,3 +11,6 @@ ollama
 groq
 openai
 google-generativeai
+psycopg2-binary
+llama-index
+llama-index-vector-stores-postgres
