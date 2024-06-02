@@ -595,6 +595,7 @@ def extract_output(refined_output: str):
 def run():
     #objective = input("Enter the objective : ")class ModelConfig(BaseModel):
     objective = """
+Please take your time to think before answering and use as much detail as needed to complete the objective!!
 Build a web app using fastapi, css and html allows user to run AI agent system.
 Include detailed documentaion on how to install, run and contribute.
 Structure each session's data as a pydandic BaseModel for easy storing and
@@ -604,7 +605,7 @@ the latest and most relevant AI models. The theme should be dark and user
 interface calm and relaxing and using best pratices for web design. The user
 should provide an objective, make the input for the objective take up most of
 the page. Use mongo db and motor asynchrounous library to access for storing
-the configs. Include an requirements.txt file.
+the configs. Include an requirements.txt file. I think you are going to do an awesome job at this!!!
 
 Here are the pydantic models for agent and model config
 

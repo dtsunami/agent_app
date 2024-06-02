@@ -25,7 +25,7 @@ POSTGRES_USER = os.environ['POSTGRES_USER']
 
 def store_folder_as_table(dirpath: str, table_name: str, embed_dim: int = 1536):
 
-    documents = SimpleDirectoryReader(dirpath).load_data()
+    documents = SimpleDirectoryReader(dirpath, recursive=True).load_data()
 
     vector_store = PGVectorStore.from_params(
         database=POSTGRES_DB,
@@ -75,11 +75,11 @@ def get_query_engine(table_name: str, embed_dim: int = 1536):
 
 def main():
 
-    #query_engine = store_folder_as_table('./final', 'ai_agent_iterations')
+    query_engine = store_folder_as_table('/nfs/site/disks/xpg_sprsp_0352/agents/fabric/patterns/', 'fabric_patterns')
 
-    query_engine = get_query_engine('ai_agent_iterations')
+    #query_engine = get_query_engine('ai_agent_iterations')
 
-    response = query_engine.query("Why do I need an AI agent system?")
+    response = query_engine.query("What are the best prompts for LLMs?")
 
     print(response)
 
