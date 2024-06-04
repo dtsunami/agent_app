@@ -307,14 +307,21 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
                                     subtitle="Refiner Output")
                 console.print(response_pnl)
 
+                idx_cont = 0
                 while refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
+
+                    zip_bytes = extract_output(refined_output, idx_cont=idx_cont)
+                    idx_cont += 1
+                    if idx_cont > 3:
+                        break
+
                     console.print(f"[bold red]Warning truncated output, will try and continue ...[/bold red]")
-                    refiner_continue_prompt = f"\n**PROMPT:**\n\nContinuing from the Previous Response, please continue the response\n"
+                    refiner_continue_prompt = f"\n**PROMPT**\n\nContinuing from the Previous Response, please continue the response\n\n**PROMPT**\n\n"
                     refiner_continue_prompt += f"\n**Previous Response:**\n\n{refined_output}"
-                    refiner_continue_prompt += f"\n\n**Original Query:**\n\n{refiner_str}"
+                    refiner_continue_prompt += f"\n\n**Original Query**\n\n{refiner_str}\n\n**Original Query**\n\n"
 
                     # response text
-                    response_pnl = Panel(refiner_continue_prompt, 
+                    response_pnl = Panel(refiner_continue_prompt,
                                          title=f"[bold cyan]Continued Refiner Prompt[/bold cyan]",
                                          title_align="",
                                          border_style="cyan",
@@ -334,7 +341,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
                     refined_output += refiner_response.content[0].text
 
                     # response text
-                    response_pnl = Panel(refined_output, 
+                    response_pnl = Panel(refined_output,
                                          title=f"[bold blue]Continued Refiner Output[/bold blue]",
                                          title_align="",
                                          border_style="blue",
@@ -346,12 +353,21 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                 idx_try += 1
                 if idx_try > 3:
+                    refined_output = "Rate Limit Error, anthropic AI sucks!"
                     break
                 time.sleep(60)
     elif "gemini" in agent.model.refiner_model:
         model = genai.GenerativeModel(agent.model.refiner_model)
         ref_response = model.generate_content("".join(refiner_prompt))
-        refined_output = ref_response.text
+        try:
+            refined_output = ref_response.text
+        except ValueError:
+            # If the response doesn't contain text, check if the prompt was blocked.
+            console.print(f"\n[bold red]Value Error During response.text[/bold red]")
+            console.print(f"\n[bold red]Prompt Feedback : {ref_response.prompt_feedback}[/bold red]")
+            console.print(f"\n[bold red]Finish Reason : {ref_response.candidates[0].finish_reason}[/bold red]")
+            console.print(f"\n[bold red]Safety Ratings : {ref_response.candidates[0].safety_ratings}[/bold red]")
+            refined_output = "come again?"
     elif 'gpt' in agent.model.refiner_model:
         raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
     else:
@@ -540,12 +556,15 @@ def run_orchestrator_loop(agent: AgentConfig):
 # --------------------------------------------------------------------------------
 
 
-def extract_output(refined_output: str):
-    console.print(f"\n[bold]Extracting the final output[/bold]")
+def extract_output(refined_output: str, idx_cont: int = None):
+    console.print("\n[bold]Extracting the final output[/bold]")
 
     # extract the project name
     project_name = refined_output.split("<project_name>")[1].split("</project_name>")[0]
+    if idx_cont is not None:
+        project_name = f"{project_name}_{idx_cont}"
     console.print(f"[green]Project Name : {project_name}[/green]")
+    
 
     with open(f"final/final_output_{project_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.md", "w") as f:
         f.write(refined_output)
@@ -592,7 +611,7 @@ def extract_output(refined_output: str):
 # --------------------------------------------------------------------------------
 
 
-def run():
+def run_agentapp():
     #objective = input("Enter the objective : ")class ModelConfig(BaseModel):
     objective = """
 Please take your time to think before answering and use as much detail as needed to complete the objective!!
@@ -605,7 +624,8 @@ the latest and most relevant AI models. The theme should be dark and user
 interface calm and relaxing and using best pratices for web design. The user
 should provide an objective, make the input for the objective take up most of
 the page. Use mongo db and motor asynchrounous library to access for storing
-the configs. Include an requirements.txt file. I think you are going to do an awesome job at this!!!
+the configs. Include an requirements.txt file. 
+I think you are going to do an awesome job at this!!!
 
 Here are the pydantic models for agent and model config
 
@@ -680,19 +700,72 @@ class AgentConfig(BaseModel):
     claude-3-haiku-20240307
     claude-3-sonnet-20240229
     '''
-    model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
+    model = ModelConfig(orchestrator_model="gemini-1.5-pro-latest",
                         refiner_model="claude-3-sonnet-20240229",
                         subagent_model="gemini-1.5-pro-latest",
-                        task_iter=7,
-                        refine_iter=5,
-                        strategy="FixedPointIteration")
+                        task_iter=3,
+                        refine_iter=4,
+                        strategy="IterativeRefinement")
     agent = AgentConfig(name='AI Agent App', objective=objective, model=model)
 
     zip_bytes = run_orchestrator_loop(agent)
 
 
+def run_fc_debugger():
+    #objective = input("Enter the objective : ")class ModelConfig(BaseModel):
+    objective = """
+Please take your time to think before answering and use as much detail as needed to complete the objective!!
+Build a web app using fastapi, css and html allows user to debug a python script.
+Include detailed documentaion on how to install, run and contribute.
+The user can select a script and provide a command to start a shell.
+You should be able to step through the code or create breakpoints.
+The interface should be a split screen with the script and the shell.
+The user should be able to edit the script and step through the lines of code 
+or enter commands into the console.
+Include controls to end or restart the session.
+Include an requirements.txt file. 
+I think you are going to do an awesome job at this!!!
+For interacting with the subprocess use the below python code, DO NOT USE PDB, ONLY INTERACT WITH THE SUBPROCESS AS BELOW!!!
+
+
+```python
+from subprocess import Popen, PIPE, STDOUT
+
+shell_command = ["python"]
+subprocess = Popen(shell_command, stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+
+filename = "code_file.py"
+with open(filename) as fid:
+    code_lines = fid.read_lines()
+
+for line in code_lines:
+    subprocess.communicate(line.encode())[0].rstrip()
+    result = subprocess.stdout.readline().rstrip()
+    print(result)
+
+```
+"""
+
+    '''
+    claude-3-opus-20240229
+    gemini-1.5-pro-latest
+    claude-3-haiku-20240307
+    claude-3-sonnet-20240229
+    '''
+    model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
+                        refiner_model="claude-3-sonnet-20240229",
+                        subagent_model="claude-3-sonnet-20240229",
+                        task_iter=3,
+                        refine_iter=4,
+                        #refine_max_tokens=8192,
+                        strategy="IterativeRefinement")
+    agent = AgentConfig(name='Fusion Compiler Python Debugger', objective=objective, model=model)
+
+    zip_bytes = run_orchestrator_loop(agent)
+
 if __name__ == "__main__":
-    run()
+    run_fc_debugger()
+
 
 # --------------------------------------------------------------------------------
 # Done :)
