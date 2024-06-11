@@ -37,7 +37,7 @@ The AI Agent System is a web application that allows users to configure and run 
 
 1. Start the uvicorn server:
    ```
-   uvicorn main:app --reload
+   uvicorn server:app --reload
    ```
 
 2. Open your web browser and access the app at `http://localhost:8000`.

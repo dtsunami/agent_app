@@ -9,7 +9,7 @@
     <h2>
     <form id="configForm" method="POST" action="/save_agent">
         <label for="orchestratorModel">Orchestrator Model:</label>
-        <select id="orchestratorModel" name="orchestrator_model" required>
+        <select id="orchestratorModel" name="orchestrator_model" value="{{ agent['model']['orchestrator_model'] }}" required>
             <option value="claude-3-sonnet-20240229">Claude v3 sonnet $$$</option>
             <option value="claude-3-opus-20240229">Claude v3 opus $$$$</option>
             <option value="claude-3-haiku-20240307">Claude v3 haiku $</option>
@@ -17,7 +17,7 @@
         </select>
         <br>
         <label for="refinerModel">Refiner Model:</label>  
-        <select id="refinerModel" name="refiner_model" required>
+        <select id="refinerModel" name="refiner_model" value="{{ agent['model']['refiner_model'] }}" required>
             <option value="claude-3-opus-20240229">Claude v3 opus $$$$</option>
             <option value="claude-3-sonnet-20240229">Claude v3 sonnet $$$</option>
             <option value="claude-3-haiku-20240307">Claude v3 haiku $</option>
@@ -25,7 +25,7 @@
         </select>
         <br>
         <label for="subagentModel">Sub-Agent Model:</label>
-        <select id="subagentModel" name="subagent_model" required>
+        <select id="subagentModel" name="subagent_model" value="{{ agent['model']['refiner_model'] }}" required>
             <option value="gemini-1.5-pro-latest">google gemini 1.5-pro $</option>
             <option value="claude-3-opus-20240229">Claude v3 opus $$$$</option>
             <option value="claude-3-sonnet-20240229">Claude v3 sonnet $$$</option>
@@ -33,22 +33,27 @@
         </select>
         <br>
         <label for="orchestration_strategy">Orchestration Strategy:</label>
-        <select id="orchestrationStrategy" name="orchestration_strategy" required>  
+        <select id="orchestrationStrategy" name="orchestration_strategy" value="{{ agent['model']['orchestration_strategy'] }}" required>  
             <option value="IterativeRefinement">IterativeRefinement</option>
         </select>
         <br>
         <label for="name">Name:</label>
-        <input type="text" id="name" name="name" required>
+        <input type="text" id="name" name="name" value="{{ agent['name'] }}" required>
         <label for="task_iter">task_iter:</label>
-        <input type="text" id="task_iter" name="task_iter" value="3">
+        <input type="text" id="task_iter" name="task_iter" value="{{ agent['model']['task_iter'] }}">
         <label for="refine_iter">refine_iter:</label>
-        <input type="text" id="refine_iter" name="refine_iter" value="2">
+        <input type="text" id="refine_iter" name="refine_iter" value="{{ agent['model']['refine_iter'] }}">
         <br>
         <label for="objective">Objective:</label>
         <br>
-        <textarea rows="20" cols="160" id="objective" name="objective" required></textarea>
+        <textarea rows="20" cols="160" id="objective" name="objective" required>{{ agent['objective'] }}</textarea>
         <br>
-        <button class="button_save_config">Save Config</button>
+        <button class="button_update_config">Update Config</button>
+        <a title="Run Agent System"
+           class="arealink"
+           href="{{ url_for('run_orch_loop', id=agent['_id']) }}">
+           <button class="button_run_orchestrator_loop">Run Orchestrator Loop</button>
+        </a>
         </h2>
     </form>
     

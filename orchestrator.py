@@ -51,7 +51,7 @@ from bson import ObjectId
 
 orch_base_prompt = '''
 Assess if the Objective has been fully achieved and if not, breakdown the next subtask.
-Please select the next subtask that most advances the obective and create a clear, 
+Please select the next subtask that most advances the obective and create a clear,
 encouraging and comprehensive prompt for a subagent to execute that subtask.
 ALWAYS CHECK CODE FOR ERRORS AND USE THE BEST PRACTICES FOR CODING TASKS AND INCLUDE FIXES FOR THE NEXT SUBTASK.",
 If you have any sugestions on how code can be improved or refactored, please include them in the next subtask prompt
@@ -195,7 +195,7 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
             # If the response doesn't contain text, check if the prompt was blocked.
             console.print(f"\n[bold red]Value Error During response.text[/bold red]")
             console.print(f"\n[bold red]Prompt Feedback : {orch_response.prompt_feedback}[/bold red]")
-            console.print(f"\n[bold red]Finish Reason : {rch_response.candidates[0].finish_reason}[/bold red]")
+            console.print(f"\n[bold red]Finish Reason : {orch_response.candidates[0].finish_reason}[/bold red]")
             console.print(f"\n[bold red]Safety Ratings : {orch_response.candidates[0].safety_ratings}[/bold red]")
             response_text = "come again?"
     elif 'gpt' in agent.model.orchestrator_model:
@@ -254,7 +254,7 @@ def query_search_provider(query: str, provider: str = "tavily"):
 # --------------------------------------------------------------------------------
 
 
-def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
+def refine_output_continue(agent: AgentConfig, idx_ref: int, era_output: str):
     console.print("\n[bold]Refining the Subtask results[/bold]")
 
     subtask_str = '\n\n'.join([f"**Subtask {i}**\n{r}" for i, r in enumerate(agent.subtask_results[idx_ref])])
@@ -378,6 +378,167 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
                          title="[bold orange]Refined Result[/bold orange]",
                          border_style="white",
                          subtitle="Refined Result")
+    console.print(response_pnl)
+
+    return refined_output
+
+
+def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
+    console.print("\n[bold]Refining the Subtask results[/bold]")
+
+    subtask_str = '\n\n'.join([f"**Subtask {i}**\n{r}" for i, r in enumerate(agent.subtask_results[idx_ref])])
+    refiner_prompt = [
+        f"**Objective:**\n\n{agent.objective}\n\n",
+        ]
+    if era_output is not None:
+        refiner_prompt.append(f"**Baseline result:**\n{era_output}\n\n",)
+
+    refiner_folders = [
+        f"**Subtask Results**\n{subtask_str}\n\n**Subtask Results**\n\n",
+        "**PROMPT**\n\n",
+        agent.model.refiner_prompt,
+        "Provide a relevent, brief and descriptive name for the project and include it in the final output in the format <project_name>name</project_name>. ",
+        "INCLUDE THE FOLLOWING:\n",
+        "1. Folder Structure: Provide the folder structure as a valid JSON object, ",
+        "where each key represents a folder or file, and nested keys represent subfolders. ",
+        "Use null values for files. Ensure the JSON is properly formatted without any syntax errors. ",
+        "Please make sure all keys are enclosed in double quotes, and ensure objects are correctly encapsulated with braces, "
+        "separating items with commas as necessary. Wrap the JSON object in <folder_structure> tags.\n"
+        ]
+    refiner_str = "".join(refiner_folders + ["Do not include the file contents in this task, those will be generated in subsequent tasks.\n"])
+
+    if "claude" in agent.model.refiner_model:
+        idx_try = 0
+        while True:
+            try:
+                content = [{"type": "text", "text": refiner_str}]
+                refiner_response = anthropic_client.messages.create(
+                    model=agent.model.refiner_model,
+                    max_tokens=agent.model.refine_max_tokens,
+                    messages=[{"role": "user", "content": content}]
+                )
+                console.print(f"[bold green]Refined output, prompt length "
+                              f"{len(refiner_str)}[/bold green]")
+                console.print(f"[bold green]Input Tokens "
+                              f"{refiner_response.usage.input_tokens}"
+                              "[/bold green]")
+                console.print(f"[bold green]Output Tokens "
+                              f"{refiner_response.usage.output_tokens}"
+                              "[/bold green]")
+                refined_output = refiner_response.content[0].text
+
+                # response text
+                response_pnl = Panel(refined_output, 
+                                     title=f"[bold magenta]Refiner Output[/bold magenta]",
+                                     title_align="",
+                                     border_style="magenta",
+                                     subtitle="Refined Folder Structure")
+                console.print(response_pnl)
+
+                if refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
+                    console.print(f"[bold red]Warning truncated output, will try and save result ...[/bold red]")
+                    zip_bytes = extract_output(refined_output, idx_cont=idx_cont)
+
+                break
+            except RateLimitError as e:
+                console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                idx_try += 1
+                if idx_try > 2:
+                    refined_output = "Rate Limit Error, anthropic AI sucks!"
+                    break
+                time.sleep(60)
+        
+        # Extract the folder structure and files
+        folder_structure = None
+        
+        if "<folder_structure>" in refined_output:
+            folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+
+            # extract the files
+            files = {}
+            def walk_folder(name, entry, files, refined_output=refined_output, agent=agent):
+                if isinstance(entry, dict):
+                    for key, value in entry.items():
+                        walk_folder(f"{name}/{key}", value, files)
+                else:
+                    existing_files = "\n\n".join([f"{c}" for n, c in files.items()])
+                    refiner_files = [
+                        f"**Subtask Results**\n{subtask_str}\n\n",
+                        f"**Folder structure**\n{refined_output}\n\n",
+                        f"**Existing Files**\n\n{existing_files}\n\n",
+                        "**PROMPT**\n\n",
+                        agent.model.refiner_prompt,
+                        f"Please include ONLY the file contents for {name} and not any other info!!",
+                        f"DO NOT INCLUDE the triple backticks ``` and filetype just the text inside the fileS!",
+                        ]
+                    refiner_str = "".join(refiner_files)
+                    idx_try = 0
+                    while True:
+                        try:
+                            content = [{"type": "text", "text": refiner_str}]
+                            refiner_response = anthropic_client.messages.create(
+                                model=agent.model.refiner_model,
+                                max_tokens=agent.model.refine_max_tokens,
+                                messages=[{"role": "user", "content": content}]
+                            )
+                            console.print(f"[bold green]Refined output, prompt length "
+                                          f"{len(refiner_str)}[/bold green]")
+                            console.print(f"[bold green]Input Tokens "
+                                          f"{refiner_response.usage.input_tokens}"
+                                          "[/bold green]")
+                            console.print(f"[bold green]Output Tokens "
+                                          f"{refiner_response.usage.output_tokens}"
+                                          "[/bold green]")
+                            file_output = f'\n\n<file name="{name}">\n{refiner_response.content[0].text}\n</file>\n\n'
+                            files[name] = file_output
+
+                            # response text
+                            response_pnl = Panel(file_output, 
+                                                 title=f"[bold magenta]Refiner Output[/bold magenta]",
+                                                 title_align="",
+                                                 border_style="magenta",
+                                                 subtitle=f"Refined File Output {name}")
+                            console.print(response_pnl)
+
+                            if refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
+                                console.print(f"[bold red]Warning truncated output, will try and save result ...[/bold red]")
+                                zip_bytes = extract_output(refined_output, idx_cont=idx_try)
+
+                            break
+                        except RateLimitError as e:
+                            console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
+                            idx_try += 1
+                            if idx_try > 2:
+                                refined_output = "Rate Limit Error, anthropic AI sucks!"
+                                break
+                            time.sleep(60)
+
+            walk_folder("", folder_structure, files)
+            for filename, content in files.items():
+                refined_output += content
+
+    elif "gemini" in agent.model.refiner_model:
+        model = genai.GenerativeModel(agent.model.refiner_model)
+        ref_response = model.generate_content("".join(refiner_prompt))
+        try:
+            refined_output = ref_response.text
+        except ValueError:
+            # If the response doesn't contain text, check if the prompt was blocked.
+            console.print(f"\n[bold red]Value Error During response.text[/bold red]")
+            console.print(f"\n[bold red]Prompt Feedback : {ref_response.prompt_feedback}[/bold red]")
+            console.print(f"\n[bold red]Finish Reason : {ref_response.candidates[0].finish_reason}[/bold red]")
+            console.print(f"\n[bold red]Safety Ratings : {ref_response.candidates[0].safety_ratings}[/bold red]")
+            refined_output = "come again?"
+    elif 'gpt' in agent.model.refiner_model:
+        raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
+    else:
+        raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
+
+
+    response_pnl = Panel(refined_output,
+                         title="[bold orange]Refined Result[/bold orange]",
+                         border_style="white",
+                         subtitle="Final Refined Result")
     console.print(response_pnl)
 
     return refined_output
@@ -580,12 +741,11 @@ def extract_output(refined_output: str, idx_cont: int = None):
             if isinstance(entry, dict):
                 for key, value in entry.items():
                     walk_folder(f"{name}/{key}", value, files)
-                    walk_folder(f"{key}", value, files)
             else:
-                if f"<file name='{name}'>" not in refined_output:
+                if f'<file name="{name}">' not in refined_output:
                     console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
                     return None
-                file_contents = refined_output.split(f"<file name='{name}'>")[1].split("</file>")[0]
+                file_contents = refined_output.split( f'<file name="{name}">' )[1].split("</file>")[0]
                 files[name] = file_contents
 
         walk_folder("", folder_structure, files)
@@ -593,7 +753,7 @@ def extract_output(refined_output: str, idx_cont: int = None):
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
             for file_name, data in files.items():
-                zip_file.writestr(file_name, data)
+                zip_file.writestr(file_name[1:], data)
             zip_file.writestr("folder_structure.json", json.dumps(folder_structure, indent=4))
             zip_file.writestr("final_output.txt", refined_output)
             zip_file.writestr("exec_log.html", console.export_html())
@@ -624,7 +784,7 @@ the latest and most relevant AI models. The theme should be dark and user
 interface calm and relaxing and using best pratices for web design. The user
 should provide an objective, make the input for the objective take up most of
 the page. Use mongo db and motor asynchrounous library to access for storing
-the configs. Include an requirements.txt file. 
+the configs. Include an requirements.txt file and use pytest for testing.
 I think you are going to do an awesome job at this!!!
 
 Here are the pydantic models for agent and model config
@@ -700,7 +860,7 @@ class AgentConfig(BaseModel):
     claude-3-haiku-20240307
     claude-3-sonnet-20240229
     '''
-    model = ModelConfig(orchestrator_model="gemini-1.5-pro-latest",
+    model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
                         refiner_model="claude-3-sonnet-20240229",
                         subagent_model="gemini-1.5-pro-latest",
                         task_iter=3,
@@ -716,16 +876,18 @@ def run_fc_debugger():
     objective = """
 Please take your time to think before answering and use as much detail as needed to complete the objective!!
 Build a web app using fastapi, css and html allows user to debug a python script.
-Include detailed documentaion on how to install, run and contribute.
-The user can select a script and provide a command to start a shell.
-You should be able to step through the code or create breakpoints.
-The interface should be a split screen with the script and the shell.
-The user should be able to edit the script and step through the lines of code 
-or enter commands into the console.
-Include controls to end or restart the session.
-Include an requirements.txt file. 
-I think you are going to do an awesome job at this!!!
-For interacting with the subprocess use the below python code, DO NOT USE PDB, ONLY INTERACT WITH THE SUBPROCESS AS BELOW!!!
+The interface should be a split screen with the script and the console.
+The user should be able to edit the script and step through the lines of code one by one or run until hitting a breakpoint.
+If the code execution is halted the user can enter commands into the console to be evaluated.
+Use html templates to display the window.
+Implement code folding and syntax highlighting for the script window, this will provide a great user inferface.
+Include an requirements.txt file. and use pytest for the testing.
+Make sure to allow the script window and console window to scroll separately!
+Don't use node or npm, just use javascript and html, link to the codemirror libraries in CDN and don't include the files themselves.
+Use a relaxing dark theme for the app and generate calm feelings to help the user focus and debug their code.
+You are great at coding, I know you'll do a great job:-)
+DO NOT USE PDB OR DEBUGGER, ONLY SEND ONE LINE AT A TIME TO THE SUBPROCESS UNTIL YOU HIT A BREAKPOINT OR VIEW AN ERROR IN THE OUTPUT.
+For interacting with the subprocess use the below python code, DO NOT USE PDB, ONLY INTERACT WITH THE SUBPROCESS AS BELOW by sending a line at a time!!!
 
 
 ```python
@@ -754,9 +916,10 @@ for line in code_lines:
     '''
     model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
                         refiner_model="claude-3-sonnet-20240229",
-                        subagent_model="claude-3-sonnet-20240229",
-                        task_iter=3,
+                        subagent_model="gemini-1.5-pro-latest",
+                        task_iter=5,
                         refine_iter=4,
+                        sub_max_tokens=8192,
                         #refine_max_tokens=8192,
                         strategy="IterativeRefinement")
     agent = AgentConfig(name='Fusion Compiler Python Debugger', objective=objective, model=model)
@@ -764,7 +927,7 @@ for line in code_lines:
     zip_bytes = run_orchestrator_loop(agent)
 
 if __name__ == "__main__":
-    run_fc_debugger()
+    run_agentapp()
 
 
 # --------------------------------------------------------------------------------

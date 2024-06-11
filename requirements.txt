@@ -16,3 +16,4 @@ llama-index
 llama-index-vector-stores-postgres
 bson
 langchain
+motor

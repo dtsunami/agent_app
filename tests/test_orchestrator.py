@@ -9,6 +9,7 @@
 
 from orchestrator import ModelConfig, AgentConfig
 from orchestrator import query_orchestrator, run_orchestrator_loop
+from orchestrator import extract_output
 
 
 def test_orchestrator_query_claude_opus():
@@ -54,4 +55,15 @@ def test_orchestrator_loop_claude_opus():
     zip_bytes = run_orchestrator_loop(agent)
 
     assert final_output is not None
+    assert zip_bytes is not None
+
+
+
+def test_output_pybuddy():
+    filepath = 'output/PyBuddy/final_output.txt'
+    with open(filepath) as fid:
+        final_output = fid.read()
+    
+    zip_bytes = extract_output(final_output)
+    
     assert zip_bytes is not None
