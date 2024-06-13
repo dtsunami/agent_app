@@ -6,12 +6,14 @@
 }
 
 
+
 textarea {
     background-color: #013c12;
     color: var(--text-color);
-    font-family: Arial, sans-serif;
     padding: 10px;
     font-size: 18px;
+    overflow-y: scroll;
+    font-family: monospace, monospace;
 }
 
 body {

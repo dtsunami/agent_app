@@ -8,26 +8,44 @@
 # --------------------------------------------------------------------------------
 
 import os
-
+import time
 from starlette.responses import HTMLResponse
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
-
 from fastapi import FastAPI, Request, Form
-
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
 from fastapi.encoders import jsonable_encoder
 import motor.motor_asyncio
-
 from agents import run_model
-
 from orchestrator import ModelConfig, AgentConfig, run_orchestrator_loop
+from sse_starlette.sse import EventSourceResponse
+from sh import tail
+
+from rich.console import Console
+from threading import Thread
+from fastapi.middleware.cors import CORSMiddleware
+
+##############################################################################
+# Create App and static/templates
+##############################################################################
+
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+##############################################################################
+# Connect to Mongo DB
+##############################################################################
 
 
 MONGO_CONN = os.environ['MONGO_CONN']
@@ -40,9 +58,19 @@ client = motor.motor_asyncio.AsyncIOMotorClient(
 mongo_db = client[MONGO_DBNAME]
 
 
+##############################################################################
+# Home Landingg Page
+##############################################################################
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+##############################################################################
+# Save/Update Agent Into Mongo DB
+##############################################################################
 
 
 @app.post("/save_agent", response_class=HTMLResponse)
@@ -71,8 +99,10 @@ async def save_agent(
     newurl = app.url_path_for('view_agent', id=created_agent["_id"])
     return RedirectResponse(newurl, status_code=303)
 
-    return JSONResponse(content={"message": "AI Agent System saved to DB!"})
 
+##############################################################################
+# View Agent by ID
+##############################################################################
 
 
 @app.get("/view_agent/{id}/", response_class=HTMLResponse)
@@ -86,46 +116,36 @@ async def view_agent(id: str, request: Request):
     return templates.TemplateResponse("view_agent.html", context)
 
 
-@app.get("/run_orch_loop/{id}/", response_class=HTMLResponse)
+##############################################################################
+# Run
+##############################################################################
+
+
+async def logfile_reader(request: Request, logfile: str):
+    for line in tail("-f", logfile, _iter=True):
+        if await request.is_disconnected():
+            print("client disconnected!!!")
+            break
+        yield line
+        time.sleep(0.1)
+
+
+@app.get("/run_orch_loop/{id}/", response_class=EventSourceResponse)
 async def run_orch_loop(id: str, request: Request):
     cfg = await mongo_db[MONGO_DBNAME].find_one({"_id": id})
+    model = ModelConfig(**cfg['model'])
+    cfg_vals = {k: v for k, v in cfg.items() if k != 'model'}
+    agent = AgentConfig(model=model, **cfg_vals)
+    filepath = f"logs/run_orch_loop_{id}.log"
+    console = Console(file=open(filepath, "wt"), record=True, width=80)
+    thread = Thread(target=run_orchestrator_loop, args=(agent, console))
+    print(f"Starting Orchestrator loop with thread, logfile={filepath}")
+    thread.start()
+    # thread.join()
+    event_generator = logfile_reader(request=request, logfile=filepath)
+    return EventSourceResponse(event_generator)
 
-    context = {"request": request,
-               "agent": cfg,
-               "layout": "all"}
 
-    return templates.TemplateResponse("view_agent.html", context)
-
-
-
-
-
-@app.post("/run")
-async def run():
-    try:
-        orchestrator_output = await run_model(agent_config.orchestrator_model, agent_config.goal)
-        refiner_output = await run_model(agent_config.refiner_model, orchestrator_output)
-        subagent_output = await run_model(agent_config.subagent_model, refiner_output)
-
-        if agent_config.orchestration_strategy == "Strategy 1":
-            final_output = await orchestrate_strategy1(orchestrator_output, refiner_output, subagent_output)
-        elif agent_config.orchestration_strategy == "Strategy 2":
-            final_output = await orchestrate_strategy2(orchestrator_output, refiner_output, subagent_output)
-        elif agent_config.orchestration_strategy == "Strategy 3":
-            final_output = await orchestrate_strategy3(orchestrator_output, refiner_output, subagent_output)
-        elif agent_config.orchestration_strategy == "Strategy 4":
-            final_output = await orchestrate_strategy4(orchestrator_output, refiner_output, subagent_output)
-        else:
-            raise ValueError(f"Unsupported orchestration strategy: {agent_config.orchestration_strategy}")
-
-        return JSONResponse(content={
-            "result": final_output,
-            "orchestrator_model": agent_config.orchestrator_model,
-            "refiner_model": agent_config.refiner_model,
-            "subagent_model": agent_config.subagent_model,
-            "goal": agent_config.goal,
-            "orchestration_strategy": agent_config.orchestration_strategy
-        })
-    except Exception as e:
-        error_message = f"An error occurred during execution: {str(e)}"
-        return JSONResponse(content={"error": error_message}, status_code=500)
+##############################################################################
+# Done:)
+##############################################################################

@@ -117,20 +117,12 @@ class AgentConfig(BaseModel):
         json_encoders = {ObjectId: str}
 
 # --------------------------------------------------------------------------------
-# Initialize the console
-# --------------------------------------------------------------------------------
-
-
-console = Console(record=True)
-
-
-# --------------------------------------------------------------------------------
 # Query the orchestrator for the next task
 # async
 # --------------------------------------------------------------------------------
 
 
-def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
+def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str, console: Console):
     console.print(f"\n[bold]Query orchestrator model: {agent.model.orchestrator_model}[/bold]")
 
     results_str = "None"
@@ -229,7 +221,7 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str):
 # --------------------------------------------------------------------------------
 
 
-def query_search_provider(query: str, provider: str = "tavily"):
+def query_search_provider(query: str, provider: str, console: Console):
     if provider == "tavily":
         try:
             search_response = tavily_client.qna_search(query=query)
@@ -254,7 +246,7 @@ def query_search_provider(query: str, provider: str = "tavily"):
 # --------------------------------------------------------------------------------
 
 
-def refine_output_continue(agent: AgentConfig, idx_ref: int, era_output: str):
+def refine_output_continue(agent: AgentConfig, idx_ref: int, era_output: str, console: Console):
     console.print("\n[bold]Refining the Subtask results[/bold]")
 
     subtask_str = '\n\n'.join([f"**Subtask {i}**\n{r}" for i, r in enumerate(agent.subtask_results[idx_ref])])
@@ -310,7 +302,7 @@ def refine_output_continue(agent: AgentConfig, idx_ref: int, era_output: str):
                 idx_cont = 0
                 while refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
 
-                    zip_bytes = extract_output(refined_output, idx_cont=idx_cont)
+                    zip_bytes = extract_output(refined_output, agent=agent, console=console, idx_cont=idx_cont)
                     idx_cont += 1
                     if idx_cont > 3:
                         break
@@ -383,7 +375,7 @@ def refine_output_continue(agent: AgentConfig, idx_ref: int, era_output: str):
     return refined_output
 
 
-def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
+def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Console):
     console.print("\n[bold]Refining the Subtask results[/bold]")
 
     subtask_str = '\n\n'.join([f"**Subtask {i}**\n{r}" for i, r in enumerate(agent.subtask_results[idx_ref])])
@@ -437,7 +429,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 
                 if refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
                     console.print(f"[bold red]Warning truncated output, will try and save result ...[/bold red]")
-                    zip_bytes = extract_output(refined_output, idx_cont=idx_cont)
+                    zip_bytes = extract_output(refined_output, agent=agent, console=console, idx_cont=idx_cont)
 
                 break
             except RateLimitError as e:
@@ -502,7 +494,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 
                             if refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
                                 console.print(f"[bold red]Warning truncated output, will try and save result ...[/bold red]")
-                                zip_bytes = extract_output(refined_output, idx_cont=idx_try)
+                                zip_bytes = extract_output(refined_output, agent=agent, console=console, idx_cont=idx_try)
 
                             break
                         except RateLimitError as e:
@@ -549,7 +541,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str):
 # ----------------------------------------------------------------------------
 
 
-def run_subtask_agent(agent: AgentConfig, subtask_query: str):
+def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
 
     if "claude" in agent.model.subagent_model:
         while True:
@@ -610,7 +602,6 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
     return subtask_result
 
 
-
 # --------------------------------------------------------------------------------
 # Function for generating the combined query for the subagent
 # --------------------------------------------------------------------------------
@@ -618,7 +609,8 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str):
 
 def generate_subtask_prompt(agent: AgentConfig, orch_response: str,
                             search_query: str, era_output: str,
-                            idx_ref: int, idx_task: int):
+                            idx_ref: int, idx_task: int, 
+                            console: Console):
 
     # create a subtask query
     system_message = ""
@@ -652,7 +644,7 @@ def generate_subtask_prompt(agent: AgentConfig, orch_response: str,
 # --------------------------------------------------------------------------------
 
 
-def run_orchestrator_loop(agent: AgentConfig):
+def run_orchestrator_loop(agent: AgentConfig, console: Console=Console(record=True)):
     console.print("\n[bold]Starting orchestrator loop[/bold]")
     console.print(f"[green]Strategy : {agent.model.strategy}[/green]")
     console.print(f"[green]Orchestrator : {agent.model.orchestrator_model}[/green]")
@@ -674,21 +666,21 @@ def run_orchestrator_loop(agent: AgentConfig):
                 (
                     orch_response,
                     search_query
-                ) = query_orchestrator(agent, idx_ref, era_output)
+                ) = query_orchestrator(agent, idx_ref, era_output, console=console)
                 agent.include_files = False
             else:
                 (
                     orch_response,
                     search_query
-                ) = query_orchestrator(agent, idx_ref, era_output)
+                ) = query_orchestrator(agent, idx_ref, era_output, console=console)
 
             if "Objective Complete:" in orch_response:
                 break
 
             subtask_query = generate_subtask_prompt(agent, orch_response,
                                                     search_query, era_output,
-                                                    idx_ref, idx_task)
-            subtask_result = run_subtask_agent(agent, subtask_query)
+                                                    idx_ref, idx_task, console=console)
+            subtask_result = run_subtask_agent(agent, subtask_query, console=console)
 
             agent.subtask_queries[idx_ref].append(subtask_query)
             agent.subtask_results[idx_ref].append(subtask_result)
@@ -697,17 +689,17 @@ def run_orchestrator_loop(agent: AgentConfig):
             break
 
         # summarize the results for this era
-        era_output = refine_output(agent, idx_ref, era_output)
+        era_output = refine_output(agent, idx_ref, era_output, console=console)
         agent.era_results.append(era_output)
 
     # Call the refiner
     if orch_response is not None and "Objective Complete:" in orch_response:
-        final_output = refine_output(agent, idx_ref, era_output)
+        final_output = refine_output(agent, idx_ref, era_output, console=console)
     else:
         final_output = era_output
 
     # Process the final output
-    zip_bytes = extract_output(final_output)
+    zip_bytes = extract_output(final_output, agent=agent, console=console)
 
     return zip_bytes
 
@@ -717,17 +709,20 @@ def run_orchestrator_loop(agent: AgentConfig):
 # --------------------------------------------------------------------------------
 
 
-def extract_output(refined_output: str, idx_cont: int = None):
+def extract_output(refined_output: str, agent: AgentConfig, console: Console, idx_cont: int = None):
     console.print("\n[bold]Extracting the final output[/bold]")
 
     # extract the project name
-    project_name = refined_output.split("<project_name>")[1].split("</project_name>")[0]
+    if '<project_name>' in refined_output:
+        project_name = f"{refined_output.split("<project_name>")[1].split("</project_name>")[0]}_{agent.id}"
+    else:
+        project_name = f"{agent.name}_{agent.id}"  
     if idx_cont is not None:
         project_name = f"{project_name}_{idx_cont}"
     console.print(f"[green]Project Name : {project_name}[/green]")
     
 
-    with open(f"final/final_output_{project_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.md", "w") as f:
+    with open(f"final/final_output_{project_name}.md", "w") as f:
         f.write(refined_output)
 
     # extract the folder structure
@@ -763,7 +758,7 @@ def extract_output(refined_output: str, idx_cont: int = None):
 
         return zip_buffer.getvalue()
     else:
-        return None 
+        return None
 
 
 # --------------------------------------------------------------------------------
