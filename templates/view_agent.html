@@ -15,6 +15,11 @@ class="arealink"
 href="{{ url_for('run_orch_loop', id=agent['_id']) }}">
 <button class="button_run_orchestrator_loop">Run Orchestrator Loop</button>
 </a>
+<a title="Restart Agent System"
+class="arealink"
+href="{{ url_for('home') }}">
+<button class="button_run_orchestrator_loop">Restart Agents</button>
+</a>
 <h2><label for="objective">Objective:</label></h2>
 <br>
 <textarea rows="20" cols="80" id="objective" name="objective">{{ agent['objective'] }}</textarea>
