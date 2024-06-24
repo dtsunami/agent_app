@@ -58,6 +58,40 @@ def test_orchestrator_loop_claude_opus():
     assert zip_bytes is not None
 
 
+def test_orchestrator_loop_claude_3p5():
+
+    objective = """
+Create a web app using codemirror javascript library that allows the user to debug a python-like subprocess.
+
+Use FastAPI, css, javascript and html templates using jinja2.
+
+The subprocess should be spawned using pexpect library.
+
+Use a dark and relaxing theme for the app and display the line numbers for code.
+
+Include controls for setting and clearing breakpoints and running, continuing or stepping through the code.
+
+The user should be able to provide the command line arguments and set environment variables for the subprocess.
+
+Don't worry about security right now since this is proof of concept only.
+"""
+    model = ModelConfig(orchestrator_model="claude-3-5-sonnet-20240620",
+                        refiner_model="claude-3-5-sonnet-20240620",
+                        subagent_model="claude-3-5-sonnet-20240620",
+                        task_iter=3,
+                        refine_iter=2,
+                        strategy="IterativeRefinement")
+    agent = AgentConfig(name="PyBugger_v3p5",
+                        objective=objective,
+                        use_search=True,
+                        include_files=False,
+                        model=model)
+
+    zip_bytes = run_orchestrator_loop(agent)
+
+    assert final_output is not None
+    assert zip_bytes is not None
+
 
 def test_output_pybuddy():
     filepath = 'output/PyBuddy/final_output.txt'

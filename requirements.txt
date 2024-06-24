@@ -20,3 +20,5 @@ motor
 sse-starlette
 sh
 gunicorn
+jupyterlab
+requests

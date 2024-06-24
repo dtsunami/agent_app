@@ -1,14 +1,14 @@
 {% extends "index.html" %}
 
-{% block title %}AI Agent{{ agent["name"] }}{% endblock %}
+{% block title %}{{ agent["name"] }} Agent App{% endblock %}
 
 {% block leftside%}
 <label for="name">Name:</label>
 <input type="text" id="name" name="name" value="{{ agent['name'] }}" required>
 <label for="task_iter">task_iter:</label>
-<input type="text" id="task_iter" name="task_iter" value="3">
+<input type="text" id="task_iter" name="task_iter" value="{{ agent['model']['task_iter'] }}">
 <label for="refine_iter">refine_iter:</label>
-<input type="text" id="refine_iter" name="refine_iter" value="2">
+<input type="text" id="refine_iter" name="refine_iter" value="{{ agent['model']['refine_iter'] }}">
 <br>
 <a title="Run Agent System"
 class="arealink"
@@ -27,12 +27,12 @@ href="{{ url_for('run_orch_loop', id=agent['_id']) }}">
 <textarea rows="20" cols="100" id="logs" name="logs"></textarea>
        
 <script>
-var source = new EventSource("{{ url_for('run_orch_loop', id=agent['_id']) }}");
+var source = new EventSource("{{ url_for('stream_loop_logs', id=agent['_id']) }}");
 source.onmessage = function(event) {
     document.getElementById("logs").innerHTML += event.data + "";
+    var objDiv = document.getElementById("logs");
+    objDiv.scrollTop = objDiv.scrollHeight;
 };
-var objDiv = document.getElementById("logs");
-objDiv.scrollTop = objDiv.scrollHeight;
 </script>
 
 {% endblock %}

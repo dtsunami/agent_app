@@ -75,9 +75,9 @@ def get_query_engine(table_name: str, embed_dim: int = 1536):
 
 def main():
 
-    query_engine = store_folder_as_table('/nfs/site/disks/xpg_sprsp_0352/agents/fabric/patterns/', 'fabric_patterns')
+    #query_engine = store_folder_as_table(f'{os.getcwd()}/../fabric/patterns/', 'fabric_patterns')
 
-    #query_engine = get_query_engine('ai_agent_iterations')
+    query_engine = get_query_engine('fabric_patterns')
 
     response = query_engine.query("What are the best prompts for LLMs?")
 

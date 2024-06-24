@@ -10,14 +10,15 @@
 import os
 import time
 from starlette.responses import HTMLResponse
-from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
+from starlette.responses import StreamingResponse
+
 from fastapi import FastAPI, Request, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.encoders import jsonable_encoder
 import motor.motor_asyncio
-from agents import run_model
+
 from orchestrator import ModelConfig, AgentConfig, run_orchestrator_loop
 from sse_starlette.sse import EventSourceResponse
 from sh import tail
@@ -53,7 +54,7 @@ MONGO_PORT = int(os.environ['MONGO_PORT'])
 MONGO_DBNAME = os.environ['MONGO_DBNAME']
 
 client = motor.motor_asyncio.AsyncIOMotorClient(
-            MONGO_CONN, MONGO_PORT, tls=True, 
+            MONGO_CONN, MONGO_PORT, tls=True,
             tlsAllowInvalidCertificates=True)
 mongo_db = client[MONGO_DBNAME]
 
@@ -84,6 +85,7 @@ async def save_agent(
     objective: str = Form(...),
     orchestration_strategy: str = Form(...)
 ):
+    print(f"save_agent: {name}")
     model = ModelConfig(orchestrator_model=orchestrator_model,
                         refiner_model=refiner_model,
                         subagent_model=subagent_model,
@@ -107,6 +109,7 @@ async def save_agent(
 
 @app.get("/view_agent/{id}/", response_class=HTMLResponse)
 async def view_agent(id: str, request: Request):
+    print(f"view_agent: {id}")
     cfg = await mongo_db[MONGO_DBNAME].find_one({"_id": id})
 
     context = {"request": request,
@@ -117,34 +120,78 @@ async def view_agent(id: str, request: Request):
 
 
 ##############################################################################
-# Run
+# Logfile streamer, scroll_tick needs to be > 0.1s to avoid overflow/hang
 ##############################################################################
+
+SCROLL_TICK = 0.1
 
 
 async def logfile_reader(request: Request, logfile: str):
+    print(f"logfile_reader: {logfile}")
     for line in tail("-f", logfile, _iter=True):
         if await request.is_disconnected():
             print("client disconnected!!!")
             break
         yield line
-        time.sleep(0.1)
+        time.sleep(SCROLL_TICK)
 
 
-@app.get("/run_orch_loop/{id}/", response_class=EventSourceResponse)
+@app.get("/stream_loop_logs/{id}/", response_class=EventSourceResponse)
+async def stream_loop_logs(id: str, request: Request):
+    filepath = f"logs/run_orch_loop_{id}.log"
+    print(f"stream_loop_logs: {filepath}")
+    if os.path.exists(filepath):
+        event_generator = logfile_reader(request=request, logfile=filepath)
+        return EventSourceResponse(event_generator)
+    print(f"stream_loop_logs: opps file doesn't exist yet {filepath}")
+    return ''
+
+
+##############################################################################
+# Logfile streamer, scroll_tick needs to be > 0.1s to avoid overflow/hang
+##############################################################################
+
+thread_for_loop = {}
+@app.get("/run_orch_loop/{id}/", response_class=HTMLResponse)
 async def run_orch_loop(id: str, request: Request):
+    print(f"run_orch_loop: Getting config from DB {id}")
     cfg = await mongo_db[MONGO_DBNAME].find_one({"_id": id})
     model = ModelConfig(**cfg['model'])
     cfg_vals = {k: v for k, v in cfg.items() if k != 'model'}
     agent = AgentConfig(model=model, **cfg_vals)
     filepath = f"logs/run_orch_loop_{id}.log"
+    print(f"run_orch_loop: Starting console with filepath {filepath}")
     console = Console(file=open(filepath, "wt"), record=True, width=80)
+    print(f"run_orch_loop: Launching thread for config {id}")
     thread = Thread(target=run_orchestrator_loop, args=(agent, console))
-    print(f"Starting Orchestrator loop with thread, logfile={filepath}")
+    print(f"run_orch_loop: Starting Orchestrator loop with thread, logfile={filepath}")
     thread.start()
-    # thread.join()
-    event_generator = logfile_reader(request=request, logfile=filepath)
-    return EventSourceResponse(event_generator)
+    global thread_for_loop
+    thread_for_loop[id] = thread
+    context = {"request": request,
+               "agent": cfg,
+               "layout": "all"}
+    return templates.TemplateResponse("view_agent.html", context)
 
+
+
+@app.get("/download_project/{id}/", response_class=StreamingResponse)
+async def download_project(id: str, request: Request):
+
+    filename = f"{id}_final.zip"
+    filepath = f"output/{filename}"
+
+    if not os.path.exists(filepath):
+        return {"error": f"file {filepath} doesn't exist, did you wait for loop to complete?"}
+    
+    def iterfile():
+        with open(filepath, mode="rb") as file_like:  # 
+            yield from file_like  # 
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"'
+    }
+    return StreamingResponse(iterfile(), headers=headers)
 
 ##############################################################################
 # Done:)

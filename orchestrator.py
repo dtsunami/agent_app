@@ -10,6 +10,9 @@
 # claude-3-haiku-20240307
 #---------------------------------------------------------------------------------
 
+from dotenv import load_dotenv
+load_dotenv() 
+
 import re
 import json
 import asyncio
@@ -34,7 +37,7 @@ from pydantic import WithJsonSchema
 from rich.console import Console
 from rich.panel import Panel
 
-from agents import openai_client, anthropic_client, tavily_client, genai, ggl_safety_settings
+from agents import openai_client, anthropic_client, tavily_client, genai, ggl_safety_settings, iGPT, IGPT_KEY, IGPT_SECRET
 
 from anthropic import RateLimitError
 from requests.exceptions import HTTPError
@@ -47,7 +50,7 @@ import zipfile
 
 from bson import ObjectId
 
-
+igpt_client = iGPT(IGPT_KEY, IGPT_SECRET)
 
 orch_base_prompt = '''
 Assess if the Objective has been fully achieved and if not, breakdown the next subtask.
@@ -190,6 +193,29 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str, consol
             console.print(f"\n[bold red]Finish Reason : {orch_response.candidates[0].finish_reason}[/bold red]")
             console.print(f"\n[bold red]Safety Ratings : {orch_response.candidates[0].safety_ratings}[/bold red]")
             response_text = "come again?"
+    
+
+    elif 'igpt' in agent.model.orchestrator_model:
+        conversation = []
+        role = "You are a expert at creating prompts for AI sub-agents."
+        orch_prompt.append("\n\nDO NOT INCLUDE THE PHRASE 'Objective Complete:' IN YOUR RESPONSE UNTIL THE OBJECTIVE IS FULLY COMPLETED!\n\n")
+        orch_str = "".join(orch_prompt)
+        console.print(f"\n[bold]iGPT content length: {len(orch_str)}[/bold]")
+        console.print(f"\n[bold]iGPT total length: {len(orch_str) + len(role)}[/bold]")
+        conversation.append({'role': 'system', 'content': role})
+        conversation.append({'role': 'user', 'content': orch_str})
+
+        orch_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+        if 'usage' in orch_response:
+            console.print(f"[bold green]Orchestrator output[/bold green]")
+            console.print(f"[bold green]Input Tokens {orch_response['usage']['promptTokens']}[/bold green]")
+            console.print(f"[bold green]Output Tokens {orch_response['usage']['completionTokens']}[/bold green]")
+        try:
+            response_text = orch_response['currentResponse']
+        except TypeError as e:
+            console.print(f"[bold red]Error querying orchestrator model {orch_response}[/bold red]")
+            response_text = "come again?"
+
     elif 'gpt' in agent.model.orchestrator_model:
         raise NotImplementedError("GPT-4 is not yet supported")
     else:
@@ -232,10 +258,10 @@ def query_search_provider(query: str, provider: str, console: Console):
                 search_response = "Error querying Tavily"
     else:
         raise ValueError(f"Unsupported search provider: {provider}")
-    response_pnl = Panel(search_response, 
-                        title=f"[bold green]Search[/bold green]", 
-                        title_align="", 
-                        border_style="green", 
+    response_pnl = Panel(search_response,
+                        title=f"[bold green]Search[/bold green]",
+                        title_align="",
+                        border_style="green",
                         subtitle="Result")
     console.print(response_pnl)
     return search_response
@@ -380,15 +406,16 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
 
     subtask_str = '\n\n'.join([f"**Subtask {i}**\n{r}" for i, r in enumerate(agent.subtask_results[idx_ref])])
     refiner_prompt = [
-        f"**Objective:**\n\n{agent.objective}\n\n",
+        f"** Objective **\n\n{agent.objective}\n\n",
         ]
     if era_output is not None:
-        refiner_prompt.append(f"**Baseline result:**\n{era_output}\n\n",)
+        refiner_prompt.append(f"** Baseline result **\n\n{era_output}\n\n",)
 
     refiner_folders = [
-        f"**Subtask Results**\n{subtask_str}\n\n**Subtask Results**\n\n",
-        "**PROMPT**\n\n",
+        f"** Subtask Results **\n\n{subtask_str}\n\n",
+        "** PROMPT **\n\n",
         agent.model.refiner_prompt,
+        *refiner_prompt,
         "Provide a relevent, brief and descriptive name for the project and include it in the final output in the format <project_name>name</project_name>. ",
         "INCLUDE THE FOLLOWING:\n",
         "1. Folder Structure: Provide the folder structure as a valid JSON object, ",
@@ -399,9 +426,18 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
         ]
     refiner_str = "".join(refiner_folders + ["Do not include the file contents in this task, those will be generated in subsequent tasks.\n"])
 
+    objective_pnl = Panel(agent.objective,
+                          title="[bold orange]Original Objective[/bold orange]",
+                          border_style="blue",
+                          subtitle="Original Objective")
+    console.print(objective_pnl)
+
+    refined_output = None
     if "claude" in agent.model.refiner_model:
         idx_try = 0
         while True:
+            console.print(f"[bold green]Refined output, prompt length "
+                            f"{len(refiner_str)}[/bold green]")
             try:
                 content = [{"type": "text", "text": refiner_str}]
                 refiner_response = anthropic_client.messages.create(
@@ -409,8 +445,6 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
                     max_tokens=agent.model.refine_max_tokens,
                     messages=[{"role": "user", "content": content}]
                 )
-                console.print(f"[bold green]Refined output, prompt length "
-                              f"{len(refiner_str)}[/bold green]")
                 console.print(f"[bold green]Input Tokens "
                               f"{refiner_response.usage.input_tokens}"
                               "[/bold green]")
@@ -427,9 +461,46 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
                                      subtitle="Refined Folder Structure")
                 console.print(response_pnl)
 
-                if refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
+                idx_cont = 0
+                while refiner_response.usage.output_tokens > (agent.model.refine_max_tokens * 0.99):
                     console.print(f"[bold red]Warning truncated output, will try and save result ...[/bold red]")
                     zip_bytes = extract_output(refined_output, agent=agent, console=console, idx_cont=idx_cont)
+
+                    idx_cont += 1
+                    if idx_cont > 3:
+                        break
+                    
+                    refiner_continue_prompt = f"** PROMPT **\n\nContinuing from the Previous Response, please continue the response\n\n"
+                    refiner_continue_prompt += f"** Previous Response **\n\n{refined_output}\n\n"
+                    refiner_continue_prompt += f"** Original Query **\n\n{refiner_str}\n\n"
+
+                    # response text
+                    response_pnl = Panel(refiner_continue_prompt,
+                                         title=f"[bold cyan]Continued Refiner Prompt[/bold cyan]",
+                                         title_align="",
+                                         border_style="cyan",
+                                         subtitle="Continued Refiner Prompt")
+                    console.print(response_pnl)
+
+                    content = [{"type": "text", "text": refiner_continue_prompt}]
+                    refiner_response = anthropic_client.messages.create(
+                        model=agent.model.refiner_model,
+                        max_tokens=agent.model.refine_max_tokens,
+                        messages=[{"role": "user", "content": content}]
+                    )
+
+                    console.print(f"[bold green]Refined output, prompt length {len(refiner_str)}[/bold green]")
+                    console.print(f"[bold green]Input Tokens {refiner_response.usage.input_tokens}[/bold green]")
+                    console.print(f"[bold green]Output Tokens {refiner_response.usage.output_tokens}[/bold green]")
+                    refined_output += refiner_response.content[0].text
+
+                    # response text
+                    response_pnl = Panel(refined_output,
+                                         title=f"[bold blue]Continued Refiner Output[/bold blue]",
+                                         title_align="",
+                                         border_style="blue",
+                                         subtitle="Continued Refiner Output")
+                    console.print(response_pnl)
 
                 break
             except RateLimitError as e:
@@ -448,22 +519,22 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
 
             # extract the files
             files = {}
-            def walk_folder(name, entry, files, refined_output=refined_output, agent=agent):
+            def walk_folder(name, entry, files, folder_structure=refined_output, agent=agent):
                 if isinstance(entry, dict):
                     for key, value in entry.items():
                         walk_folder(f"{name}/{key}", value, files)
                 else:
                     existing_files = "\n\n".join([f"{c}" for n, c in files.items()])
                     refiner_files = [
-                        f"**Subtask Results**\n{subtask_str}\n\n",
-                        f"**Folder structure**\n{refined_output}\n\n",
-                        f"**Existing Files**\n\n{existing_files}\n\n",
-                        "**PROMPT**\n\n",
+                        f"** Subtask Results **\n{subtask_str}",
+                        f"** Folder Structure **\n{folder_structure}",
+                        f"** Existing Files **\n\n{existing_files}",
+                        "** PROMPT **",
                         agent.model.refiner_prompt,
                         f"Please include ONLY the file contents for {name} and not any other info!!",
-                        f"DO NOT INCLUDE the triple backticks ``` and filetype just the text inside the fileS!",
+                        f"DO NOT INCLUDE the triple backticks ``` and filetype just the text inside the files!",
                         ]
-                    refiner_str = "".join(refiner_files)
+                    refiner_str = "\n\n".join(refiner_files)
                     idx_try = 0
                     while True:
                         try:
@@ -509,6 +580,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
             for filename, content in files.items():
                 refined_output += content
 
+
     elif "gemini" in agent.model.refiner_model:
         model = genai.GenerativeModel(agent.model.refiner_model)
         ref_response = model.generate_content("".join(refiner_prompt))
@@ -521,8 +593,151 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
             console.print(f"\n[bold red]Finish Reason : {ref_response.candidates[0].finish_reason}[/bold red]")
             console.print(f"\n[bold red]Safety Ratings : {ref_response.candidates[0].safety_ratings}[/bold red]")
             refined_output = "come again?"
+
+        # Extract the folder structure and files
+        folder_structure = None
+        if "<folder_structure>" in refined_output:
+            folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+
+            # extract the files
+            files = {}
+            def walk_folder(name, entry, files, refined_output=refined_output, agent=agent):
+                if isinstance(entry, dict):
+                    for key, value in entry.items():
+                        walk_folder(f"{name}/{key}", value, files)
+                else:
+                    existing_files = "\n\n".join([f"{c}" for n, c in files.items()])
+                    refiner_files = [
+                        f"** Subtask Results **\n{subtask_str}",
+                        f"** Folder Structure **\n{folder_structure}",
+                        f"** Existing Files **\n\n{existing_files}",
+                        "** PROMPT **",
+                        agent.model.refiner_prompt,
+                        f"Please include ONLY the file contents for {name} and not any other info!!",
+                        f"DO NOT INCLUDE the triple backticks ``` and filetype just the text inside the files!",
+                        ]
+                    refiner_str = "\n\n".join(refiner_files)
+                    refiner_response = model.generate_content(refiner_str)
+                    file_output = None
+                    try:
+                        file_output = ref_response.text
+                    except ValueError:
+                        # If the response doesn't contain text, check if the prompt was blocked.
+                        console.print(f"\n[bold red]Value Error During response.text[/bold red]")
+                        console.print(f"\n[bold red]Prompt Feedback : {ref_response.prompt_feedback}[/bold red]")
+                        console.print(f"\n[bold red]Finish Reason : {ref_response.candidates[0].finish_reason}[/bold red]")
+                        console.print(f"\n[bold red]Safety Ratings : {ref_response.candidates[0].safety_ratings}[/bold red]")
+                        file_output = "come again?"
+                    if f'<file name="{name}">' not in file_output:
+                        file_output = f'\n\n<file name="{name}">\n{file_output}\n</file>\n\n'
+                    else:
+                        file_output = f'\n\n{file_output}\n\n'
+
+                    files[name] = file_output
+
+            walk_folder("", folder_structure, files)
+            for filename, content in files.items():
+                refined_output += content
+
+
+    elif 'igpt' in agent.model.refiner_model:
+        conversation = []
+        role = "You are a master software architect."
+        console.print(f"\n[bold]Generating File Structure[/bold]")
+        console.print(f"[bold]iGPT content length: {len(refiner_str)}[/bold]")
+        console.print(f"[bold]iGPT total length: {len(refiner_str) + len(role)}[/bold]")
+        conversation.append({'role': 'system', 'content': role})
+        conversation.append({'role': 'user', 'content': refiner_str})
+        for idx_try in range(3):
+            ref_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+            if 'usage' in ref_response:
+                console.print(f"[bold green]Refiner File Structure Tokens[/bold green]")
+                console.print(f"[bold green]Input Tokens {ref_response['usage']['promptTokens']}[/bold green]")
+                console.print(f"[bold green]Output Tokens {ref_response['usage']['completionTokens']}[/bold green]")
+            else:
+                console.print(f"[bold red]Error querying refinement model {ref_response}[/bold red]")
+                continue
+            if 'currentResponse' in ref_response:
+                refined_output = ref_response['currentResponse']
+                break
+        if refined_output is None:
+            refined_output = "come again?"
+
+        # Extract the folder structure and files
+        folder_structure = None
+        if "<folder_structure>" in refined_output:
+            folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+
+            # extract the files
+            files = {}
+            def walk_folder(name, entry, files, folder_structure=refined_output, agent=agent):
+                if isinstance(entry, dict):
+                    for key, value in entry.items():
+                        walk_folder(f"{name}/{key}", value, files)
+                else:
+                    existing_files = "\n\n".join([f"{c}" for n, c in files.items()])
+                    refiner_files = [
+                        f"** Subtask Results **\n{subtask_str}",
+                        f"** Folder Structure **\n{folder_structure}",
+                        f"** Existing Files **\n\n{existing_files}",
+                        "** PROMPT **",
+                        agent.model.refiner_prompt,
+                        f"Please include ONLY the file contents for {name} and not any other info!!",
+                        f"DO NOT INCLUDE the triple backticks ``` and filetype just the text inside the files!",
+                        ]
+                    file_output = None
+                    conversation = []
+                    role = "You are a master software architect."
+                    refiner_file_str = "\n\n".join(refiner_files)
+                    console.print(f"\n[bold]Generating File Output For : {entry}[/bold]")
+                    console.print(f"[bold]iGPT content length: {len(refiner_file_str)}[/bold]")
+                    console.print(f"[bold]iGPT total length: {len(refiner_file_str) + len(role)}[/bold]")
+                    role = "You are a expert at coding large projects who can comprehend lots of detail."
+                    conversation.append({'role': 'system', 'content': role})
+                    conversation.append({'role': 'user', 'content': refiner_file_str})
+
+                    for idx_try in range(3):
+                        file_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+                        if 'usage' in file_response:
+                            console.print(f"[bold green]Refiner File Output Tokens[/bold green]")
+                            console.print(f"[bold green]Input Tokens {file_response['usage']['promptTokens']}[/bold green]")
+                            console.print(f"[bold green]Output Tokens {file_response['usage']['completionTokens']}[/bold green]")
+                        else:
+                            console.print(f"[bold red]Error querying refinement model {file_response}[/bold red]")
+                            continue
+                        if 'currentResponse' in file_response:
+                            file_output = file_response['currentResponse']
+                            break
+                    if file_output is None:
+                        file_output = "come again?"
+
+                    file_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+                    if 'usage' in file_response:
+                        console.print(f"[bold green]Refiner output[/bold green]")
+                        console.print(f"[bold green]Input Tokens {file_response['usage']['promptTokens']}[/bold green]")
+                        console.print(f"[bold green]Output Tokens {file_response['usage']['completionTokens']}[/bold green]")
+                    try:
+                        file_output = file_response['currentResponse']
+                    except TypeError as e:
+                        console.print(f"[bold red]Error querying file contents {file_response}[/bold red]")
+                        file_output = "come again?"
+
+                    if f'<file name="{name}">' not in file_output:
+                        file_output = f'\n\n<file name="{name}">\n{file_output}\n</file>\n\n'
+                    else:
+                        file_output = f'\n\n{file_output}\n\n'
+
+                    files[name] = file_output
+
+            walk_folder("", folder_structure, files)
+            for filename, content in files.items():
+                refined_output += content
+
+
     elif 'gpt' in agent.model.refiner_model:
         raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
+
+
     else:
         raise ValueError(f"Unsupported refiner model: {agent.model.refiner_model}")
 
@@ -555,14 +770,27 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
                 console.print(f"[bold green]Subagent output prompt length {len(subtask_query)}[/bold green]")
                 console.print(f"[bold green]Input Tokens {subagent_response.usage.input_tokens}[/bold green]")
                 console.print(f"[bold green]Output Tokens {subagent_response.usage.output_tokens}[/bold green]")
-                subtask_result = subagent_response.content[0].text
+                idx_cont = 0
+                subtask_result = subagent_response.content[idx_cont].text
 
                 while subagent_response.usage.output_tokens > (agent.model.sub_max_tokens * 0.99):
-                    subagent_continue_prompt = f"\n# Continuing from the Previous Response, please continue the response\n"
-                    subagent_continue_prompt += f"\n\n**Previous Response**\n{subtask_result}"
-                    subagent_continue_prompt += f"\n\n**Original Query**\n{subtask_query}"
+                    response_pnl = Panel(subtask_result,
+                                         title="[bold orange]Incremental SubAgent Result[/bold orange]",
+                                         border_style="red",
+                                         subtitle="[bold orange]Incremental SubAgent Result[/bold orange]")
+                    console.print(response_pnl)
+
+                    subagent_continue_prompt = f"\n\n*** PROMPT ***\n\n"
+                    subagent_continue_prompt += f"\n\n*** Continuing from the Previous Response and fulfilling the Original Query, please continue the response ***\n\n"
+                    subagent_continue_prompt += f"\n\n** Previous Response **\n\n{subtask_result}"
+                    subagent_continue_prompt += f"\n\n** Original Query **\n\n{subtask_query}"
                     subtask_messages = [{"role": "user", "content": [{"type": "text", "text": subagent_continue_prompt}]}]
                     console.print("[bold red]Warning truncated output, will try and continue ...[/bold red]")
+                    subprompt_pnl = Panel(subagent_continue_prompt,
+                                          title="[bold orange]Incremental SubAgent Prompt[/bold orange]",
+                                          border_style="red",
+                                          subtitle="[bold orange]Incremental SubAgent Prompt[/bold orange]")
+                    console.print(subprompt_pnl)
                     subagent_response = anthropic_client.messages.create(
                         model=agent.model.subagent_model,
                         max_tokens=agent.model.sub_max_tokens,
@@ -571,11 +799,14 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
                     console.print(f"[bold green]Subagent output prompt length {len(subagent_continue_prompt)}[/bold green]")
                     console.print(f"[bold green]Input Tokens {subagent_response.usage.input_tokens}[/bold green]")
                     console.print(f"[bold green]Output Tokens {subagent_response.usage.output_tokens}[/bold green]")
-                    subtask_result += subagent_response.content[0].text
+                    console.print(f"[bold green]Contents Length {len(subagent_response.content)}[/bold green]")
+                    subtask_result += subagent_response.content[idx_cont].text
                 break
             except RateLimitError as e:
                 console.print(f"\n[bold red]Hit Rate Limit Error, will retry in 60s[/bold red]")
                 time.sleep(60)
+
+
     elif 'gemini' in agent.model.subagent_model:
         # TODO: need to check this query and output tokens etc for google model
         model = genai.GenerativeModel(agent.model.subagent_model)
@@ -590,6 +821,28 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
             console.print(f"\n[bold red]Finish Reason : {subagent_response.candidates[0].finish_reason}[/bold red]")
             console.print(f"\n[bold red]Safety Ratings : {subagent_response.candidates[0].safety_ratings}[/bold red]")
             subtask_result = "come again?"
+
+
+    elif 'igpt' in agent.model.subagent_model:
+        conversation = []
+        subtask_prompt = f"**prompt:**\n\n{subtask_query}\n\n"
+        role = "You are coding expert sub-agent who knowns about semiconductor physical design tasks."
+        console.print(f"\n[bold]iGPT content length: {len(subtask_prompt)}[/bold]")
+        console.print(f"\n[bold]iGPT total length: {len(subtask_prompt) + len(role)}[/bold]")
+        conversation.append({'role': 'system', 'content': role})
+        conversation.append({'role': 'user', 'content': subtask_prompt})
+        subagent_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+        if 'usage' in subagent_response:
+            console.print(f"[bold green]Orchestrator output[/bold green]")
+            console.print(f"[bold green]Input Tokens {subagent_response['usage']['promptTokens']}[/bold green]")
+            console.print(f"[bold green]Output Tokens {subagent_response['usage']['completionTokens']}[/bold green]")
+        try:
+            subtask_result = subagent_response['currentResponse']
+        except TypeError as e:
+            console.print(f"[bold red]Error querying subagent model {subagent_response}[/bold red]")
+            subtask_result = "come again?"
+
+
     else:
         raise ValueError(f"Unsupported subagent model: {agent.model.subagent_model}")
 
@@ -616,25 +869,27 @@ def generate_subtask_prompt(agent: AgentConfig, orch_response: str,
     system_message = ""
     subtask_query = ""
     if idx_ref != 0:
-        system_message = "\n**Baseline Result**\n"
+        system_message = "\n** Baseline Result **\n"
         system_message += f"{era_output}\n\n"
     if idx_task != 0:
         res = [f"**Task Result {idx}**\n{result}"
                for idx, result in enumerate(agent.subtask_results[idx_ref])]
-        system_message = "\n**Previous Task Results**\n"
+        system_message = "\n** Previous Task Results **\n"
         system_message += "\n".join(res)
     subtask_query += orch_response
     subtask_query += system_message
 
     # check if files are included
     if (idx_ref == 0) and (idx_task == 0) and len(agent.files) > 0:
-        subtask_query += "**FILES**\n\n" + "\n".join([f'**File content ({name})**\n{cont}\n\n' for name, cont in agent.files.items()])
+        subtask_query += "** FILES **\n\n" + "\n".join([f'** File content ({name}) **\n{cont}\n\n' for name, cont in agent.files.items()])
 
     # add in the search query if needed
     search_result = None
     if agent.use_search and search_query is not None:
-        search_result = query_search_provider(search_query)
-        subtask_query += f"\n**Search Results**\n{search_result}"
+        search_result = query_search_provider(query=search_query, provider="tavily", console=console)
+        subtask_query += f"\n** Search Results **\n{search_result}"
+
+    subtask_query += f"\n\nONLY INCLUDE THE CONCISE AND COMPLETE REPSPONSE TO THE SUBTASK IN THIS STEP!!\n\n"
 
     return subtask_query
 
@@ -651,6 +906,10 @@ def run_orchestrator_loop(agent: AgentConfig, console: Console=Console(record=Tr
     console.print(f"[green]Subagent : {agent.model.subagent_model}[/green]")
     console.print(f"[green]Refiner : {agent.model.refiner_model}[/green]")
 
+    # refresh the bear token
+    global igpt_client
+    igpt_client = iGPT(IGPT_KEY, IGPT_SECRET)
+
     era_output = None
     orch_response = None
     for idx_ref in range(agent.model.refine_iter):
@@ -660,7 +919,7 @@ def run_orchestrator_loop(agent: AgentConfig, console: Console=Console(record=Tr
 
         for idx_task in range(agent.model.task_iter):
 
-            console.print(f"\n[bold]Running Orchestrator for SubTask Prompt: Iteration {idx_task + 1}[/bold]")
+            console.print(f"\n[bold]Running Orchestrator for SubTask Prompt: Refine Iteration {idx_ref + 1} Task Iteration {idx_task + 1}[/bold]")
             if (idx_ref == 0) and (idx_task == 0):
                 agent.include_files = True
                 (
@@ -714,51 +973,68 @@ def extract_output(refined_output: str, agent: AgentConfig, console: Console, id
 
     # extract the project name
     if '<project_name>' in refined_output:
-        project_name = f"{refined_output.split("<project_name>")[1].split("</project_name>")[0]}_{agent.id}"
+        project_name = f'{refined_output.split("<project_name>")[1].split("</project_name>")[0]}_{agent.id}'
     else:
-        project_name = f"{agent.name}_{agent.id}"  
+        project_name = f"{agent.name}_{agent.id}"
     if idx_cont is not None:
         project_name = f"{project_name}_{idx_cont}"
-    console.print(f"[green]Project Name : {project_name}[/green]")
-    
 
+    # print project name
+    console.print(f"[green]Project Name : {project_name}[/green]")
+
+    # write the final output
     with open(f"final/final_output_{project_name}.md", "w") as f:
         f.write(refined_output)
 
+    console.print(f"[green]Download Project http://{os.environ['HOSTNAME']}:{os.environ['APP_PORT']}/download_project/{agent.id}[/green]")
+
+    console.print(f"[green]Successfully Completed Objective :-) [/green]")
+    console.print(f"[green]Name {agent.name}[/green]")
+    console.print(f"[green]Project {project_name}[/green]")
+    console.print(f"[green]Refined Output Length {len(refined_output)}[/green]")
+    console.print(f"[green]Done :)[/green]")
+    console.print(f"[green]Done :)[/green]")
+    console.print(f"[green]Done :)[/green]")
+    console.print(f"[green]Done :)[/green]")
+
     # extract the folder structure
     folder_structure = None
-    if "<folder_structure>" in refined_output:
-        folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
 
-        # extract the files
-        files = {}
-        def walk_folder(name, entry, files):
-            if isinstance(entry, dict):
-                for key, value in entry.items():
-                    walk_folder(f"{name}/{key}", value, files)
-            else:
-                if f'<file name="{name}">' not in refined_output:
-                    console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
-                    return None
-                file_contents = refined_output.split( f'<file name="{name}">' )[1].split("</file>")[0]
-                files[name] = file_contents
+        if "<folder_structure>" not in refined_output:
+            console.print(f"[red]Folder Structure Not Found In Output[/red]")
+        else:
+            folder_structure = json.loads(refined_output.split("<folder_structure>")[1].split("</folder_structure>")[0])
 
-        walk_folder("", folder_structure, files)
+            # extract the files
+            files = {}
+            def walk_folder(name, entry, files):
+                if isinstance(entry, dict):
+                    for key, value in entry.items():
+                        walk_folder(f"{name}/{key}", value, files)
+                else:
+                    if f'<file name="{name}">' not in refined_output:
+                        console.print(f"\n[bold red]Missing file contents for {name}[/bold red]")
+                        return None
+                    file_contents = refined_output.split( f'<file name="{name}">' )[1].split("</file>")[0]
+                    files[name] = file_contents
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            walk_folder("", folder_structure, files)
+
             for file_name, data in files.items():
                 zip_file.writestr(file_name[1:], data)
-            zip_file.writestr("folder_structure.json", json.dumps(folder_structure, indent=4))
-            zip_file.writestr("final_output.txt", refined_output)
-            zip_file.writestr("exec_log.html", console.export_html())
+            
+        zip_file.writestr("folder_structure.json", json.dumps(folder_structure, indent=4))
+        zip_file.writestr("final_output.txt", refined_output)
+        zip_file.writestr("exec_log.html", console.export_html())
 
-        with open(f'./output/{project_name}.zip', 'wb') as f:
-            f.write(zip_buffer.getvalue())
+    with open(f'./output/{project_name}.zip', 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    with open(f'./output/{agent.id}_final.zip', 'wb') as f:
+        f.write(zip_buffer.getvalue())
 
-        return zip_buffer.getvalue()
-    else:
-        return None
+    return zip_buffer.getvalue()
 
 
 # --------------------------------------------------------------------------------
@@ -855,9 +1131,9 @@ class AgentConfig(BaseModel):
     claude-3-haiku-20240307
     claude-3-sonnet-20240229
     '''
-    model = ModelConfig(orchestrator_model="claude-3-sonnet-20240229",
-                        refiner_model="claude-3-sonnet-20240229",
-                        subagent_model="gemini-1.5-pro-latest",
+    model = ModelConfig(orchestrator_model="igpt4-turbo",
+                        refiner_model="igpt4-turbo",
+                        subagent_model="igpt4-turbo",
                         task_iter=3,
                         refine_iter=4,
                         strategy="IterativeRefinement")
@@ -920,6 +1196,8 @@ for line in code_lines:
     agent = AgentConfig(name='Fusion Compiler Python Debugger', objective=objective, model=model)
 
     zip_bytes = run_orchestrator_loop(agent)
+
+
 
 if __name__ == "__main__":
     run_agentapp()

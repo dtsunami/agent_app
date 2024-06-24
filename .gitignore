@@ -5,3 +5,4 @@ __pycache__
 env.sh
 final
 logs
+.ipynb_checkpoints

@@ -13,13 +13,17 @@
 # gemini-1.5-pro
 # gemini-1.5-flash
 # gemini-1.0-pro
+# igpt4_turbo
 # --------------------------------------------------------------------------------
 
+from dotenv import load_dotenv
+load_dotenv() 
 
 import os
 import re
 import json
 import asyncio
+import requests
 from datetime import datetime
 
 from anthropic import Anthropic
@@ -64,18 +68,75 @@ ggl_safety_settings = [
     },
 ]
 
-
 # --------------------------------------------------------------------------------
-# Run the appropriate model for task instructions
+# Client for igpt since it doesn't exist
+# TODO: cache the token
 # --------------------------------------------------------------------------------
 
+IGPT_KEY = os.environ['IGPT_KEY']
+IGPT_SECRET = os.environ['IGPT_SECRET']
+IGPT_AUTH_URI = os.environ['IGPT_AUTH_URI']
+IGPT_INF_URI = os.environ['IGPT_INF_URI']
 
-async def run_model(model_name: str, instructions: str, previous_tasks: dict[str, str] = None):
-    # Placeholder for running the model, can be orchestrator, refiner or subagent
-    await asyncio.sleep(1)  # Simulating processing time
-    return f"({model_name}) output for goal: {goal}"
+class iGPT:
+
+    def __init__(self, key: str, secret: str,
+                 model: str = 'gpt-4-turbo',
+                 temperature: float = 0.95,
+                 top_p: float = 0.85,
+                 frequency_penalty: float = 0,
+                 presence_penalty: float = 0,
+                 max_tokens: int = 4096):
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {'grant_type': 'client_credentials',
+                'client_id': key, 'client_secret': secret}
+        response = requests.post(IGPT_AUTH_URI, headers=headers, data=data)
+        if response.status_code == 200:
+            self._token = json.loads(response.content)['access_token']
+        else:
+            raise ValueError(f"Can't get the auth token  {response.status_code}: {response.text}")
+
+        self.model = model
+        self.temperature = temperature
+        self.top_p = top_p
+        self.frequency_penalty = frequency_penalty
+        self.presence_penalty = presence_penalty
+        self.max_tokens = max_tokens
 
 
+    def generate(self, conversation: list[dict], correlationId: str = "iGPT design agents", ):
+        '''
+        [
+            {
+            "role": "system",
+            "content": "Summarize everything to as few words as possible."
+            },
+            {
+            "role": "user",
+            "content": "Tell me a story about Little Red Riding Hood"
+            }
+        ]
+        '''
+        prompt = {
+            "correlationId": correlationId,
+            "options": {
+                "temperature": self.temperature,
+                "top_P": self.top_p,
+                "frequency_Penalty": self.frequency_penalty,
+                "presence_Penalty": self.presence_penalty,
+                "max_Tokens": self.max_tokens,
+                "model": self.model,
+            },
+            "conversation": conversation
+        }
+
+        headers = {"Authorization": f"Bearer {self._token}",
+                   "Content-Type": "application/json"} 
+        response = requests.post(IGPT_INF_URI, headers=headers, data=json.dumps(prompt))
+        if response.status_code == 200:
+            return json.loads(response.content)
+        else:
+            return f"iGPT Generate Error  {response.status_code}: {response.text}"
 
 # --------------------------------------------------------------------------------
 # Done :)
