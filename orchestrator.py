@@ -196,6 +196,7 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str, consol
     
 
     elif 'igpt' in agent.model.orchestrator_model:
+        global igpt_client
         conversation = []
         role = "You are a expert at creating prompts for AI sub-agents."
         orch_prompt.append("\n\nDO NOT INCLUDE THE PHRASE 'Objective Complete:' IN YOUR RESPONSE UNTIL THE OBJECTIVE IS FULLY COMPLETED!\n\n")
@@ -206,6 +207,10 @@ def query_orchestrator(agent: AgentConfig, idx_ref: int, era_output: str, consol
         conversation.append({'role': 'user', 'content': orch_str})
 
         orch_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+        if "Token has expired" in orch_response:
+            igpt_client = iGPT(key=IGPT_KEY, secret=IGPT_SECRET)
+            orch_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+
         if 'usage' in orch_response:
             console.print(f"[bold green]Orchestrator output[/bold green]")
             console.print(f"[bold green]Input Tokens {orch_response['usage']['promptTokens']}[/bold green]")
@@ -641,6 +646,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
 
 
     elif 'igpt' in agent.model.refiner_model:
+        global igpt_client
         conversation = []
         role = "You are a master software architect."
         console.print(f"\n[bold]Generating File Structure[/bold]")
@@ -650,6 +656,10 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
         conversation.append({'role': 'user', 'content': refiner_str})
         for idx_try in range(3):
             ref_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+            if "Token has expired" in ref_response:
+                igpt_client = iGPT(key=IGPT_KEY, secret=IGPT_SECRET)
+                ref_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+
             if 'usage' in ref_response:
                 console.print(f"[bold green]Refiner File Structure Tokens[/bold green]")
                 console.print(f"[bold green]Input Tokens {ref_response['usage']['promptTokens']}[/bold green]")
@@ -671,6 +681,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
             # extract the files
             files = {}
             def walk_folder(name, entry, files, folder_structure=refined_output, agent=agent):
+                global igpt_client
                 if isinstance(entry, dict):
                     for key, value in entry.items():
                         walk_folder(f"{name}/{key}", value, files)
@@ -689,7 +700,7 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
                     conversation = []
                     role = "You are a master software architect."
                     refiner_file_str = "\n\n".join(refiner_files)
-                    console.print(f"\n[bold]Generating File Output For : {entry}[/bold]")
+                    console.print(f"\n[bold]Generating File Output For : {name}[/bold]")
                     console.print(f"[bold]iGPT content length: {len(refiner_file_str)}[/bold]")
                     console.print(f"[bold]iGPT total length: {len(refiner_file_str) + len(role)}[/bold]")
                     role = "You are a expert at coding large projects who can comprehend lots of detail."
@@ -698,6 +709,9 @@ def refine_output(agent: AgentConfig, idx_ref: int, era_output: str, console: Co
 
                     for idx_try in range(3):
                         file_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+                        if "Token has expired" in file_response:
+                            igpt_client = iGPT(key=IGPT_KEY, secret=IGPT_SECRET)
+                            file_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
                         if 'usage' in file_response:
                             console.print(f"[bold green]Refiner File Output Tokens[/bold green]")
                             console.print(f"[bold green]Input Tokens {file_response['usage']['promptTokens']}[/bold green]")
@@ -824,6 +838,7 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
 
 
     elif 'igpt' in agent.model.subagent_model:
+        global igpt_client
         conversation = []
         subtask_prompt = f"**prompt:**\n\n{subtask_query}\n\n"
         role = "You are coding expert sub-agent who knowns about semiconductor physical design tasks."
@@ -832,6 +847,11 @@ def run_subtask_agent(agent: AgentConfig, subtask_query: str, console: Console):
         conversation.append({'role': 'system', 'content': role})
         conversation.append({'role': 'user', 'content': subtask_prompt})
         subagent_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+
+        if "Token has expired" in subagent_response:
+            igpt_client = iGPT(key=IGPT_KEY, secret=IGPT_SECRET)
+            subagent_response = igpt_client.generate(conversation=conversation, correlationId=str(agent.id))
+ 
         if 'usage' in subagent_response:
             console.print(f"[bold green]Orchestrator output[/bold green]")
             console.print(f"[bold green]Input Tokens {subagent_response['usage']['promptTokens']}[/bold green]")

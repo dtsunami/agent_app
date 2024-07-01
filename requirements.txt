@@ -22,3 +22,4 @@ sh
 gunicorn
 jupyterlab
 requests
+crawl4ai @ git+https://github.com/unclecode/crawl4ai.git
