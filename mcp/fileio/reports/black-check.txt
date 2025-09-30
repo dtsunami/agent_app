@@ -1,0 +1,4320 @@
+--- /mnt/blk/lostboy/mcp/fileio/utils.py	2025-09-18 03:02:49.806179+00:00
++++ /mnt/blk/lostboy/mcp/fileio/utils.py	2025-09-20 22:23:34.216119+00:00
+@@ -3,40 +3,47 @@
+ import json
+ from pathlib import Path
+ from typing import Dict, Any, Union
+ from datetime import datetime
+ 
++
+ def human_size(bytes_size: int) -> str:
+     """Convert bytes to human readable format."""
+-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
++    for unit in ["B", "KB", "MB", "GB", "TB"]:
+         if bytes_size < 1024:
+             return f"{bytes_size:.1f} {unit}"
+         bytes_size /= 1024
+     return f"{bytes_size:.1f} PB"
+ 
++
+ def format_timestamp(timestamp: float) -> str:
+     """Format Unix timestamp to readable string."""
+     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
++
+ 
+ def safe_json_dumps(obj: Any, indent: int = 2) -> str:
+     """Safely serialize object to JSON string."""
+     try:
+         return json.dumps(obj, indent=indent, default=str)
+     except Exception as e:
+         return f"Error serializing to JSON: {str(e)}"
+ 
++
+ def validate_file_extension(file_path: Path, allowed_extensions: list) -> bool:
+     """Check if file extension is allowed."""
+     if not allowed_extensions:
+         return True
+     return file_path.suffix.lower() in [ext.lower() for ext in allowed_extensions]
+ 
++
+ def get_mime_type(file_path: Path) -> str:
+     """Get MIME type for file."""
+     import mimetypes
++
+     mime_type, _ = mimetypes.guess_type(str(file_path))
+     return mime_type or "application/octet-stream"
++
+ 
+ def create_file_info(file_path: Path, base_path: Path) -> Dict[str, Any]:
+     """Create file information dictionary."""
+     try:
+         stat = file_path.stat()
+@@ -48,12 +55,9 @@
+             "modified": format_timestamp(stat.st_mtime),
+             "created": format_timestamp(stat.st_ctime),
+             "is_file": file_path.is_file(),
+             "is_directory": file_path.is_dir(),
+             "extension": file_path.suffix,
+-            "mime_type": get_mime_type(file_path) if file_path.is_file() else None
++            "mime_type": get_mime_type(file_path) if file_path.is_file() else None,
+         }
+     except Exception as e:
+-        return {
+-            "name": file_path.name,
+-            "error": str(e)
+-        }
+\ No newline at end of file
++        return {"name": file_path.name, "error": str(e)}
+would reformat /mnt/blk/lostboy/mcp/fileio/utils.py
+--- /mnt/blk/lostboy/mcp/fileio/config.py	2025-09-18 04:19:14.853431+00:00
++++ /mnt/blk/lostboy/mcp/fileio/config.py	2025-09-20 22:23:34.221059+00:00
+@@ -4,32 +4,40 @@
+ import os
+ from pathlib import Path
+ from dataclasses import dataclass
+ from typing import List
+ 
++
+ @dataclass
+ class SecurityConfig:
+     """Security configuration settings."""
++
+     enable_write: bool
+     enable_delete: bool
+     sandbox_mode: bool
+ 
++
+ @dataclass
+ class LoggingConfig:
+     """Logging configuration settings."""
++
+     level: str
+     file: str
++
+ 
+ @dataclass
+ class ServerConfig:
+     """Server configuration settings."""
++
+     host: str
+     port: int
++
+ 
+ @dataclass
+ class FileIOConfig:
+     """Main configuration for FileIO MCP Server."""
++
+     name: str
+     version: str
+     base_path: Path
+     allowed_directories: List[str]
+     max_file_size: int
+@@ -48,11 +56,13 @@
+         with open(config_file) as f:
+             data = json.load(f)
+ 
+         # Override with environment variables if present
+         base_path = os.getenv("FILEIO_BASE_PATH", data["base_path"])
+-        allowed_directories = os.getenv("FILEIO_ALLOWED_DIRS", ",".join(data["allowed_directories"])).split(",")
++        allowed_directories = os.getenv(
++            "FILEIO_ALLOWED_DIRS", ",".join(data["allowed_directories"])
++        ).split(",")
+         max_file_size = int(os.getenv("FILEIO_MAX_FILE_SIZE", data["max_file_size"]))
+ 
+         # Server configuration from environment
+         server_host = os.getenv("FILEIO_HOST", data["server"]["host"])
+         server_port = int(os.getenv("FILEIO_PORT", data["server"]["port"]))
+@@ -64,11 +74,11 @@
+             allowed_directories=[d.strip() for d in allowed_directories],
+             max_file_size=max_file_size,
+             allowed_extensions=data["allowed_extensions"],
+             security=SecurityConfig(**data["security"]),
+             logging=LoggingConfig(**data["logging"]),
+-            server=ServerConfig(host=server_host, port=server_port)
++            server=ServerConfig(host=server_host, port=server_port),
+         )
+ 
+     def validate(self) -> bool:
+         """Validate configuration settings."""
+         if not self.base_path.exists():
+@@ -77,6 +87,6 @@
+         for directory in self.allowed_directories:
+             dir_path = self.base_path / directory
+             if not dir_path.exists():
+                 dir_path.mkdir(parents=True, exist_ok=True)
+ 
+-        return True
+\ No newline at end of file
++        return True
+would reformat /mnt/blk/lostboy/mcp/fileio/config.py
+--- /mnt/blk/lostboy/mcp/fileio/tests/conftest.py	2025-09-20 21:54:16.201082+00:00
++++ /mnt/blk/lostboy/mcp/fileio/tests/conftest.py	2025-09-20 22:23:34.306146+00:00
+@@ -46,29 +46,33 @@
+         "name": "fileio-test",
+         "version": "1.0.0",
+         "base_path": str(temp_base_dir),
+         "allowed_directories": ["ingress", "wip", "completed"],
+         "max_file_size": 1048576,  # 1MB for tests
+-        "allowed_extensions": [".txt", ".json", ".csv", ".md", ".log", ".xml", ".yaml", ".yml", ".py", ".js", ".html", ".css", ".zip"],
+-        "security": {
+-            "enable_write": True,
+-            "enable_delete": True,
+-            "sandbox_mode": True
+-        },
+-        "logging": {
+-            "level": "DEBUG",
+-            "file": "/tmp/fileio-test.log"
+-        },
+-        "server": {
+-            "host": "127.0.0.1",
+-            "port": 18000
+-        }
++        "allowed_extensions": [
++            ".txt",
++            ".json",
++            ".csv",
++            ".md",
++            ".log",
++            ".xml",
++            ".yaml",
++            ".yml",
++            ".py",
++            ".js",
++            ".html",
++            ".css",
++            ".zip",
++        ],
++        "security": {"enable_write": True, "enable_delete": True, "sandbox_mode": True},
++        "logging": {"level": "DEBUG", "file": "/tmp/fileio-test.log"},
++        "server": {"host": "127.0.0.1", "port": 18000},
+     }
+ 
+     # Write temporary config file
+     config_file = temp_base_dir / "test_config.json"
+-    with open(config_file, 'w') as f:
++    with open(config_file, "w") as f:
+         json.dump(config_data, f, indent=2)
+ 
+     return FileIOConfig.load(str(config_file))
+ 
+ 
+@@ -83,11 +87,13 @@
+     """Create DirectoryOperations instance with test config."""
+     return DirectoryOperations(test_config)
+ 
+ 
+ @pytest.fixture
+-async def mcp_server(test_config: FileIOConfig) -> AsyncGenerator[MCPFileIOServer, None]:
++async def mcp_server(
++    test_config: FileIOConfig,
++) -> AsyncGenerator[MCPFileIOServer, None]:
+     """Create MCP server instance for testing."""
+     # Mock MongoDB for tests
+     server = MCPFileIOServer.__new__(MCPFileIOServer)
+     server.config = test_config
+     server.logger = MagicMock()
+@@ -118,11 +124,11 @@
+     files["text"] = {"path": text_file, "content": text_content}
+ 
+     # JSON file
+     json_file = temp_base_dir / "ingress" / "data.json"
+     json_content = {"name": "test", "value": 42, "items": [1, 2, 3]}
+-    with open(json_file, 'w') as f:
++    with open(json_file, "w") as f:
+         json.dump(json_content, f, indent=2)
+     files["json"] = {"path": json_file, "content": json_content}
+ 
+     # Binary-like file (CSV)
+     csv_file = temp_base_dir / "ingress" / "data.csv"
+@@ -147,11 +153,11 @@
+ @pytest.fixture
+ def sample_archive(temp_base_dir: Path, sample_files: dict) -> Path:
+     """Create a sample ZIP archive for testing."""
+     archive_path = temp_base_dir / "completed" / "test_archive.zip"
+ 
+-    with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
++    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+         zipf.write(sample_files["text"]["path"], "sample.txt")
+         zipf.write(sample_files["json"]["path"], "data.json")
+ 
+     return archive_path
+ 
+@@ -167,15 +173,11 @@
+     mock_client.__aexit__ = AsyncMock(return_value=None)
+     mock_db.command = AsyncMock(return_value={"ok": 1})
+     mock_db.mcp_executions = mock_collection
+     mock_collection.insert_one = AsyncMock()
+ 
+-    return {
+-        "client": mock_client,
+-        "database": mock_db,
+-        "collection": mock_collection
+-    }
++    return {"client": mock_client, "database": mock_db, "collection": mock_collection}
+ 
+ 
+ @pytest.fixture(autouse=True)
+ def clean_environment():
+     """Clean environment variables before each test."""
+@@ -213,6 +215,6 @@
+         else:
+             path.parent.mkdir(parents=True, exist_ok=True)
+             if isinstance(content, str):
+                 path.write_text(content)
+             else:
+-                path.write_bytes(content)
+\ No newline at end of file
++                path.write_bytes(content)
+would reformat /mnt/blk/lostboy/mcp/fileio/tests/conftest.py
+--- /mnt/blk/lostboy/mcp/fileio/directory_ops.py	2025-09-18 03:21:53.842490+00:00
++++ /mnt/blk/lostboy/mcp/fileio/directory_ops.py	2025-09-20 22:23:34.372492+00:00
+@@ -5,10 +5,11 @@
+ from typing import List, Dict, Any
+ from mcp import types
+ 
+ from config import FileIOConfig
+ from utils import create_file_info, human_size, safe_json_dumps
++
+ 
+ class DirectoryOperations:
+     """Handle directory-level operations."""
+ 
+     def __init__(self, config: FileIOConfig):
+@@ -24,121 +25,121 @@
+                     "type": "object",
+                     "properties": {
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory (ingress, wip, or completed)"
++                            "description": "Target directory (ingress, wip, or completed)",
+                         },
+                         "pattern": {
+                             "type": "string",
+                             "default": "*",
+-                            "description": "Glob pattern to filter files"
++                            "description": "Glob pattern to filter files",
+                         },
+                         "recursive": {
+                             "type": "boolean",
+                             "default": False,
+-                            "description": "Search recursively in subdirectories"
++                            "description": "Search recursively in subdirectories",
+                         },
+                         "include_hidden": {
+                             "type": "boolean",
+                             "default": False,
+-                            "description": "Include hidden files and directories"
++                            "description": "Include hidden files and directories",
+                         },
+                         "details": {
+                             "type": "boolean",
+                             "default": False,
+-                            "description": "Include detailed file information"
+-                        }
++                            "description": "Include detailed file information",
++                        },
+                     },
+-                    "required": ["directory"]
+-                }
++                    "required": ["directory"],
++                },
+             ),
+             types.Tool(
+                 name="get_directory_tree",
+                 description="Get directory structure as a tree view",
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
++                            "description": "Target directory",
+                         },
+                         "max_depth": {
+                             "type": "integer",
+                             "default": 3,
+                             "minimum": 1,
+                             "maximum": 10,
+-                            "description": "Maximum depth to traverse"
++                            "description": "Maximum depth to traverse",
+                         },
+                         "include_hidden": {
+                             "type": "boolean",
+                             "default": False,
+-                            "description": "Include hidden files and directories"
+-                        }
++                            "description": "Include hidden files and directories",
++                        },
+                     },
+-                    "required": ["directory"]
+-                }
++                    "required": ["directory"],
++                },
+             ),
+             types.Tool(
+                 name="get_directory_stats",
+                 description="Get directory statistics (file count, sizes, types)",
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
++                            "description": "Target directory",
+                         },
+                         "recursive": {
+                             "type": "boolean",
+                             "default": True,
+-                            "description": "Include subdirectories in statistics"
+-                        }
++                            "description": "Include subdirectories in statistics",
++                        },
+                     },
+-                    "required": ["directory"]
+-                }
++                    "required": ["directory"],
++                },
+             ),
+             types.Tool(
+                 name="search_files",
+                 description="Search for files by name or content pattern",
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
++                            "description": "Target directory",
+                         },
+                         "name_pattern": {
+                             "type": "string",
+-                            "description": "Filename pattern to search for"
++                            "description": "Filename pattern to search for",
+                         },
+                         "content_pattern": {
+                             "type": "string",
+-                            "description": "Content pattern to search for (text files only)"
++                            "description": "Content pattern to search for (text files only)",
+                         },
+                         "case_sensitive": {
+                             "type": "boolean",
+                             "default": False,
+-                            "description": "Case sensitive search"
++                            "description": "Case sensitive search",
+                         },
+                         "max_results": {
+                             "type": "integer",
+                             "default": 50,
+                             "maximum": 200,
+-                            "description": "Maximum number of results"
+-                        }
++                            "description": "Maximum number of results",
++                        },
+                     },
+                     "required": ["directory"],
+                     "anyOf": [
+                         {"required": ["name_pattern"]},
+-                        {"required": ["content_pattern"]}
+-                    ]
+-                }
+-            )
++                        {"required": ["content_pattern"]},
++                    ],
++                },
++            ),
+         ]
+ 
+     async def execute(self, name: str, arguments: dict) -> List[types.TextContent]:
+         """Execute directory operation tool."""
+         try:
+@@ -149,19 +150,15 @@
+             elif name == "get_directory_stats":
+                 return await self._get_directory_stats(arguments)
+             elif name == "search_files":
+                 return await self._search_files(arguments)
+             else:
+-                return [types.TextContent(
+-                    type="text",
+-                    text=f"Unknown operation: {name}"
+-                )]
++                return [
++                    types.TextContent(type="text", text=f"Unknown operation: {name}")
++                ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error in {name}: {str(e)}"
+-            )]
++            return [types.TextContent(type="text", text=f"Error in {name}: {str(e)}")]
+ 
+     async def _list_files(self, args: dict) -> List[types.TextContent]:
+         """List files in directory."""
+         dir_path = self.config.base_path / args["directory"]
+         pattern = args.get("pattern", "*")
+@@ -175,38 +172,45 @@
+             files = dir_path.glob(pattern)
+ 
+         file_list = []
+         for file_path in sorted(files):
+             # Skip hidden files unless requested
+-            if not include_hidden and file_path.name.startswith('.'):
++            if not include_hidden and file_path.name.startswith("."):
+                 continue
+ 
+             if details:
+                 info = create_file_info(file_path, self.config.base_path)
+                 file_list.append(info)
+             else:
+                 rel_path = file_path.relative_to(dir_path)
+                 file_type = "📁" if file_path.is_dir() else "📄"
+-                size = human_size(file_path.stat().st_size) if file_path.is_file() else ""
++                size = (
++                    human_size(file_path.stat().st_size) if file_path.is_file() else ""
++                )
+                 file_list.append(f"{file_type} {rel_path} {size}".strip())
+ 
+         if not file_list:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"No files found matching pattern: {pattern}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text", text=f"No files found matching pattern: {pattern}"
++                )
++            ]
+ 
+         if details:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Files in {args['directory']}:\n{safe_json_dumps(file_list)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Files in {args['directory']}:\n{safe_json_dumps(file_list)}",
++                )
++            ]
+         else:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Files in {args['directory']}:\n" + "\n".join(file_list)
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Files in {args['directory']}:\n" + "\n".join(file_list),
++                )
++            ]
+ 
+     async def _get_directory_tree(self, args: dict) -> List[types.TextContent]:
+         """Get directory tree structure."""
+         dir_path = self.config.base_path / args["directory"]
+         max_depth = args.get("max_depth", 3)
+@@ -218,11 +222,11 @@
+ 
+             items = []
+             try:
+                 children = sorted(path.iterdir())
+                 if not include_hidden:
+-                    children = [c for c in children if not c.name.startswith('.')]
++                    children = [c for c in children if not c.name.startswith(".")]
+ 
+                 for i, child in enumerate(children):
+                     is_last = i == len(children) - 1
+                     current_prefix = "└── " if is_last else "├── "
+                     next_prefix = "    " if is_last else "│   "
+@@ -233,25 +237,24 @@
+                         try:
+                             size_info = f" ({human_size(child.stat().st_size)})"
+                         except:
+                             pass
+ 
+-                    items.append(f"{prefix}{current_prefix}{icon} {child.name}{size_info}")
++                    items.append(
++                        f"{prefix}{current_prefix}{icon} {child.name}{size_info}"
++                    )
+ 
+                     if child.is_dir() and depth < max_depth:
+                         items.extend(build_tree(child, depth + 1, prefix + next_prefix))
+ 
+             except PermissionError:
+                 items.append(f"{prefix}└── [Permission Denied]")
+ 
+             return items
+ 
+         tree_lines = [f"📁 {args['directory']}/"] + build_tree(dir_path)
+-        return [types.TextContent(
+-            type="text",
+-            text="\n".join(tree_lines)
+-        )]
++        return [types.TextContent(type="text", text="\n".join(tree_lines))]
+ 
+     async def _get_directory_stats(self, args: dict) -> List[types.TextContent]:
+         """Get directory statistics."""
+         dir_path = self.config.base_path / args["directory"]
+         recursive = args.get("recursive", True)
+@@ -261,11 +264,11 @@
+             "total_files": 0,
+             "total_directories": 0,
+             "total_size": 0,
+             "file_types": {},
+             "largest_files": [],
+-            "newest_files": []
++            "newest_files": [],
+         }
+ 
+         files_info = []
+ 
+         if recursive:
+@@ -283,15 +286,17 @@
+                     # Track file types
+                     ext = item.suffix.lower() or "no_extension"
+                     stats["file_types"][ext] = stats["file_types"].get(ext, 0) + 1
+ 
+                     # Track for largest/newest files
+-                    files_info.append({
+-                        "path": str(item.relative_to(self.config.base_path)),
+-                        "size": size,
+-                        "modified": item.stat().st_mtime
+-                    })
++                    files_info.append(
++                        {
++                            "path": str(item.relative_to(self.config.base_path)),
++                            "size": size,
++                            "modified": item.stat().st_mtime,
++                        }
++                    )
+ 
+                 elif item.is_dir():
+                     stats["total_directories"] += 1
+ 
+             except (PermissionError, OSError):
+@@ -308,14 +313,15 @@
+         )[:5]
+ 
+         # Convert size to human readable
+         stats["total_size_human"] = human_size(stats["total_size"])
+ 
+-        return [types.TextContent(
+-            type="text",
+-            text=f"Directory Statistics:\n{safe_json_dumps(stats)}"
+-        )]
++        return [
++            types.TextContent(
++                type="text", text=f"Directory Statistics:\n{safe_json_dumps(stats)}"
++            )
++        ]
+ 
+     async def _search_files(self, args: dict) -> List[types.TextContent]:
+         """Search for files by name or content."""
+         dir_path = self.config.base_path / args["directory"]
+         name_pattern = args.get("name_pattern")
+@@ -337,63 +343,86 @@
+                 filename = file_path.name
+                 if not case_sensitive:
+                     filename = filename.lower()
+ 
+                 if name_pattern in filename:
+-                    results.append({
+-                        "type": "name_match",
+-                        "path": str(file_path.relative_to(self.config.base_path)),
+-                        "match": name_pattern,
+-                        "is_file": file_path.is_file()
+-                    })
++                    results.append(
++                        {
++                            "type": "name_match",
++                            "path": str(file_path.relative_to(self.config.base_path)),
++                            "match": name_pattern,
++                            "is_file": file_path.is_file(),
++                        }
++                    )
+ 
+         # Search by content
+         if content_pattern and len(results) < max_results:
+-            search_pattern = content_pattern if case_sensitive else content_pattern.lower()
++            search_pattern = (
++                content_pattern if case_sensitive else content_pattern.lower()
++            )
+ 
+             for file_path in dir_path.rglob("*"):
+                 if len(results) >= max_results:
+                     break
+ 
+                 if not file_path.is_file():
+                     continue
+ 
+                 # Only search text files
+-                if file_path.suffix.lower() not in ['.txt', '.md', '.json', '.yaml', '.yml', '.log', '.csv']:
++                if file_path.suffix.lower() not in [
++                    ".txt",
++                    ".md",
++                    ".json",
++                    ".yaml",
++                    ".yml",
++                    ".log",
++                    ".csv",
++                ]:
+                     continue
+ 
+                 try:
+                     # Check file size
+                     if file_path.stat().st_size > self.config.max_file_size:
+                         continue
+ 
+-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
++                    content = file_path.read_text(encoding="utf-8", errors="ignore")
+                     search_content = content if case_sensitive else content.lower()
+ 
+                     if search_pattern in search_content:
+                         # Find line number of first match
+-                        lines = search_content.split('\n')
++                        lines = search_content.split("\n")
+                         line_num = next(
+-                            (i + 1 for i, line in enumerate(lines) if search_pattern in line),
+-                            1
++                            (
++                                i + 1
++                                for i, line in enumerate(lines)
++                                if search_pattern in line
++                            ),
++                            1,
+                         )
+ 
+-                        results.append({
+-                            "type": "content_match",
+-                            "path": str(file_path.relative_to(self.config.base_path)),
+-                            "match": content_pattern,
+-                            "line": line_num
+-                        })
++                        results.append(
++                            {
++                                "type": "content_match",
++                                "path": str(
++                                    file_path.relative_to(self.config.base_path)
++                                ),
++                                "match": content_pattern,
++                                "line": line_num,
++                            }
++                        )
+ 
+                 except (UnicodeDecodeError, PermissionError, OSError):
+                     continue
+ 
+         if not results:
+-            return [types.TextContent(
++            return [
++                types.TextContent(
++                    type="text", text="No files found matching the search criteria."
++                )
++            ]
++
++        return [
++            types.TextContent(
+                 type="text",
+-                text="No files found matching the search criteria."
+-            )]
+-
+-        return [types.TextContent(
+-            type="text",
+-            text=f"Search Results ({len(results)} found):\n{safe_json_dumps(results)}"
+-        )]
+\ No newline at end of file
++                text=f"Search Results ({len(results)} found):\n{safe_json_dumps(results)}",
++            )
++        ]
+would reformat /mnt/blk/lostboy/mcp/fileio/directory_ops.py
+--- /mnt/blk/lostboy/mcp/fileio/tests/integration/test_mcp_server.py	2025-09-20 21:58:03.369392+00:00
++++ /mnt/blk/lostboy/mcp/fileio/tests/integration/test_mcp_server.py	2025-09-20 22:23:34.399919+00:00
+@@ -20,12 +20,12 @@
+             "id": 1,
+             "method": "initialize",
+             "params": {
+                 "protocolVersion": "2024-11-05",
+                 "capabilities": {"tools": {}},
+-                "clientInfo": {"name": "test-client", "version": "1.0.0"}
+-            }
++                "clientInfo": {"name": "test-client", "version": "1.0.0"},
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(init_request)
+ 
+         assert response["jsonrpc"] == "2.0"
+@@ -39,16 +39,11 @@
+     async def test_tools_list_flow(self, mcp_server: MCPFileIOServer):
+         """Test tools/list request flow."""
+         # Initialize first
+         await mcp_server.handle_initialize({})
+ 
+-        list_request = {
+-            "jsonrpc": "2.0",
+-            "id": 2,
+-            "method": "tools/list",
+-            "params": {}
+-        }
++        list_request = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+ 
+         response = await mcp_server.handle_mcp_request(list_request)
+ 
+         assert response["jsonrpc"] == "2.0"
+         assert response["id"] == 2
+@@ -58,22 +53,32 @@
+         tools = response["result"]["tools"]
+         assert len(tools) > 0
+ 
+         # Check that all expected tools are present
+         tool_names = [tool["name"] for tool in tools]
+-        expected_tools = ["read_file", "write_file", "copy_file", "move_file", "compress_file", "extract_file", "file_lock"]
++        expected_tools = [
++            "read_file",
++            "write_file",
++            "copy_file",
++            "move_file",
++            "compress_file",
++            "extract_file",
++            "file_lock",
++        ]
+ 
+         for expected_tool in expected_tools:
+             assert expected_tool in tool_names
+ 
+         # Verify tool structure
+         for tool in tools:
+             assert "name" in tool
+             assert "description" in tool
+             assert "inputSchema" in tool
+ 
+-    async def test_file_operations_workflow(self, mcp_server: MCPFileIOServer, sample_files: dict):
++    async def test_file_operations_workflow(
++        self, mcp_server: MCPFileIOServer, sample_files: dict
++    ):
+         """Test complete file operations workflow through MCP."""
+         # Initialize server
+         await mcp_server.handle_initialize({})
+ 
+         # Test 1: Read existing file
+@@ -81,21 +86,20 @@
+             "jsonrpc": "2.0",
+             "id": 3,
+             "method": "tools/call",
+             "params": {
+                 "name": "read_file",
+-                "arguments": {
+-                    "directory": "ingress",
+-                    "path": "sample.txt"
+-                }
+-            }
++                "arguments": {"directory": "ingress", "path": "sample.txt"},
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(read_request)
+         assert response["jsonrpc"] == "2.0"
+         assert "result" in response
+-        assert response["result"]["content"][0]["text"] == sample_files["text"]["content"]
++        assert (
++            response["result"]["content"][0]["text"] == sample_files["text"]["content"]
++        )
+ 
+         # Test 2: Write new file
+         write_request = {
+             "jsonrpc": "2.0",
+             "id": 4,
+@@ -103,13 +107,13 @@
+             "params": {
+                 "name": "write_file",
+                 "arguments": {
+                     "directory": "wip",
+                     "path": "new_workflow_file.txt",
+-                    "content": "Workflow test content"
+-                }
+-            }
++                    "content": "Workflow test content",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(write_request)
+         assert "File written successfully" in response["result"]["content"][0]["text"]
+ 
+@@ -122,13 +126,13 @@
+                 "name": "copy_file",
+                 "arguments": {
+                     "source_directory": "wip",
+                     "source_path": "new_workflow_file.txt",
+                     "target_directory": "completed",
+-                    "target_path": "processed_file.txt"
+-                }
+-            }
++                    "target_path": "processed_file.txt",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(copy_request)
+         assert "File copied successfully" in response["result"]["content"][0]["text"]
+ 
+@@ -137,21 +141,20 @@
+             "jsonrpc": "2.0",
+             "id": 6,
+             "method": "tools/call",
+             "params": {
+                 "name": "check_file_exists",
+-                "arguments": {
+-                    "directory": "completed",
+-                    "path": "processed_file.txt"
+-                }
+-            }
++                "arguments": {"directory": "completed", "path": "processed_file.txt"},
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(verify_request)
+         assert '"exists": true' in response["result"]["content"][0]["text"]
+ 
+-    async def test_compression_workflow(self, mcp_server: MCPFileIOServer, sample_files: dict):
++    async def test_compression_workflow(
++        self, mcp_server: MCPFileIOServer, sample_files: dict
++    ):
+         """Test compression and extraction workflow."""
+         await mcp_server.handle_initialize({})
+ 
+         # Test 1: Compress multiple files
+         compress_request = {
+@@ -161,20 +164,22 @@
+             "params": {
+                 "name": "compress_file",
+                 "arguments": {
+                     "files": [
+                         {"directory": "ingress", "path": "sample.txt"},
+-                        {"directory": "ingress", "path": "data.json"}
++                        {"directory": "ingress", "path": "data.json"},
+                     ],
+                     "archive_directory": "completed",
+-                    "archive_path": "workflow_archive.zip"
+-                }
+-            }
++                    "archive_path": "workflow_archive.zip",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(compress_request)
+-        assert "Archive created successfully" in response["result"]["content"][0]["text"]
++        assert (
++            "Archive created successfully" in response["result"]["content"][0]["text"]
++        )
+ 
+         # Test 2: Extract archive
+         extract_request = {
+             "jsonrpc": "2.0",
+             "id": 8,
+@@ -183,50 +188,49 @@
+                 "name": "extract_file",
+                 "arguments": {
+                     "archive_directory": "completed",
+                     "archive_path": "workflow_archive.zip",
+                     "extract_directory": "wip",
+-                    "extract_path": "extracted_workflow"
+-                }
+-            }
++                    "extract_path": "extracted_workflow",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(extract_request)
+-        assert "Archive extracted successfully" in response["result"]["content"][0]["text"]
++        assert (
++            "Archive extracted successfully" in response["result"]["content"][0]["text"]
++        )
+ 
+         # Test 3: Verify extracted files
+         verify_request = {
+             "jsonrpc": "2.0",
+             "id": 9,
+             "method": "tools/call",
+             "params": {
+                 "name": "read_file",
+                 "arguments": {
+                     "directory": "wip",
+-                    "path": "extracted_workflow/sample.txt"
+-                }
+-            }
++                    "path": "extracted_workflow/sample.txt",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(verify_request)
+-        assert response["result"]["content"][0]["text"] == sample_files["text"]["content"]
++        assert (
++            response["result"]["content"][0]["text"] == sample_files["text"]["content"]
++        )
+ 
+     async def test_file_locking_integration(self, mcp_server: MCPFileIOServer):
+         """Test file locking through MCP interface."""
+         await mcp_server.handle_initialize({})
+ 
+         # Test 1: Check initial lock status
+         lock_status_request = {
+             "jsonrpc": "2.0",
+             "id": 10,
+             "method": "tools/call",
+-            "params": {
+-                "name": "file_lock",
+-                "arguments": {
+-                    "action": "list_active"
+-                }
+-            }
++            "params": {"name": "file_lock", "arguments": {"action": "list_active"}},
+         }
+ 
+         response = await mcp_server.handle_mcp_request(lock_status_request)
+         assert "No active file locks" in response["result"]["content"][0]["text"]
+ 
+@@ -239,13 +243,13 @@
+             "params": {
+                 "name": "write_file",
+                 "arguments": {
+                     "directory": "wip",
+                     "path": "lock_test.txt",
+-                    "content": "Lock test content"
+-                }
+-            }
++                    "content": "Lock test content",
++                },
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(write_request)
+         assert "File written successfully" in response["result"]["content"][0]["text"]
+ 
+@@ -256,11 +260,11 @@
+         # Test 1: Invalid method
+         invalid_request = {
+             "jsonrpc": "2.0",
+             "id": 12,
+             "method": "invalid/method",
+-            "params": {}
++            "params": {},
+         }
+ 
+         response = await mcp_server.handle_mcp_request(invalid_request)
+         assert "error" in response
+         assert response["error"]["code"] == -32601  # Method not found
+@@ -268,14 +272,11 @@
+         # Test 2: Invalid tool call
+         invalid_tool_request = {
+             "jsonrpc": "2.0",
+             "id": 13,
+             "method": "tools/call",
+-            "params": {
+-                "name": "invalid_tool",
+-                "arguments": {}
+-            }
++            "params": {"name": "invalid_tool", "arguments": {}},
+         }
+ 
+         response = await mcp_server.handle_mcp_request(invalid_tool_request)
+         assert "error" in response
+         assert "Unknown tool" in response["error"]["message"]
+@@ -285,15 +286,12 @@
+             "jsonrpc": "2.0",
+             "id": 14,
+             "method": "tools/call",
+             "params": {
+                 "name": "read_file",
+-                "arguments": {
+-                    "directory": "invalid_directory",
+-                    "path": "test.txt"
+-                }
+-            }
++                "arguments": {"directory": "invalid_directory", "path": "test.txt"},
++            },
+         }
+ 
+         response = await mcp_server.handle_mcp_request(invalid_args_request)
+         assert "error" in response
+ 
+@@ -310,24 +308,26 @@
+                 "params": {
+                     "name": "write_file",
+                     "arguments": {
+                         "directory": "wip",
+                         "path": f"concurrent_file_{file_id}.txt",
+-                        "content": f"Content for file {file_id}"
+-                    }
+-                }
++                        "content": f"Content for file {file_id}",
++                    },
++                },
+             }
+             return await mcp_server.handle_mcp_request(request)
+ 
+         # Run multiple writes concurrently
+         tasks = [write_file(i) for i in range(5)]
+         responses = await asyncio.gather(*tasks)
+ 
+         # Verify all operations succeeded
+         for i, response in enumerate(responses):
+             assert "result" in response
+-            assert "File written successfully" in response["result"]["content"][0]["text"]
++            assert (
++                "File written successfully" in response["result"]["content"][0]["text"]
++            )
+ 
+         # Verify all files were created
+         for i in range(5):
+             check_request = {
+                 "jsonrpc": "2.0",
+@@ -335,13 +335,13 @@
+                 "method": "tools/call",
+                 "params": {
+                     "name": "check_file_exists",
+                     "arguments": {
+                         "directory": "wip",
+-                        "path": f"concurrent_file_{i}.txt"
+-                    }
+-                }
++                        "path": f"concurrent_file_{i}.txt",
++                    },
++                },
+             }
+ 
+             response = await mcp_server.handle_mcp_request(check_request)
+             assert '"exists": true' in response["result"]["content"][0]["text"]
+ 
+@@ -349,19 +349,30 @@
+ @pytest.mark.integration
+ @pytest.mark.slow
+ class TestRealWorldWorkflows:
+     """Test real-world workflow scenarios."""
+ 
+-    async def test_data_processing_pipeline(self, mcp_server: MCPFileIOServer, temp_base_dir):
++    async def test_data_processing_pipeline(
++        self, mcp_server: MCPFileIOServer, temp_base_dir
++    ):
+         """Test a complete data processing pipeline."""
+         await mcp_server.handle_initialize({})
+ 
+         # Step 1: Simulate data ingestion - create input files
+         input_data = [
+-            {"name": "dataset1.csv", "content": "id,name,value\n1,Alice,100\n2,Bob,200\n"},
+-            {"name": "dataset2.csv", "content": "id,name,value\n3,Charlie,300\n4,Diana,400\n"},
+-            {"name": "config.json", "content": '{"processing_rules": ["normalize", "validate"]}'}
++            {
++                "name": "dataset1.csv",
++                "content": "id,name,value\n1,Alice,100\n2,Bob,200\n",
++            },
++            {
++                "name": "dataset2.csv",
++                "content": "id,name,value\n3,Charlie,300\n4,Diana,400\n",
++            },
++            {
++                "name": "config.json",
++                "content": '{"processing_rules": ["normalize", "validate"]}',
++            },
+         ]
+ 
+         for data in input_data:
+             request = {
+                 "jsonrpc": "2.0",
+@@ -370,16 +381,18 @@
+                 "params": {
+                     "name": "write_file",
+                     "arguments": {
+                         "directory": "ingress",
+                         "path": data["name"],
+-                        "content": data["content"]
+-                    }
+-                }
++                        "content": data["content"],
++                    },
++                },
+             }
+             response = await mcp_server.handle_mcp_request(request)
+-            assert "File written successfully" in response["result"]["content"][0]["text"]
++            assert (
++                "File written successfully" in response["result"]["content"][0]["text"]
++            )
+ 
+         # Step 2: Move files to processing (wip) directory
+         for data in input_data:
+             request = {
+                 "jsonrpc": "2.0",
+@@ -389,13 +402,13 @@
+                     "name": "move_file",
+                     "arguments": {
+                         "source_directory": "ingress",
+                         "source_path": data["name"],
+                         "target_directory": "wip",
+-                        "target_path": f"processing_{data['name']}"
+-                    }
+-                }
++                        "target_path": f"processing_{data['name']}",
++                    },
++                },
+             }
+             response = await mcp_server.handle_mcp_request(request)
+             assert "File moved successfully" in response["result"]["content"][0]["text"]
+ 
+         # Step 3: Simulate processing - create processed files
+@@ -412,16 +425,19 @@
+                     "params": {
+                         "name": "write_file",
+                         "arguments": {
+                             "directory": "wip",
+                             "path": processed_name,
+-                            "content": processed_content
+-                        }
+-                    }
++                            "content": processed_content,
++                        },
++                    },
+                 }
+                 response = await mcp_server.handle_mcp_request(request)
+-                assert "File written successfully" in response["result"]["content"][0]["text"]
++                assert (
++                    "File written successfully"
++                    in response["result"]["content"][0]["text"]
++                )
+                 processed_files.append({"directory": "wip", "path": processed_name})
+ 
+         # Step 4: Archive processed results
+         request = {
+             "jsonrpc": "2.0",
+@@ -430,42 +446,46 @@
+             "params": {
+                 "name": "compress_file",
+                 "arguments": {
+                     "files": processed_files,
+                     "archive_directory": "completed",
+-                    "archive_path": "processed_data_archive.zip"
+-                }
+-            }
++                    "archive_path": "processed_data_archive.zip",
++                },
++            },
+         }
+         response = await mcp_server.handle_mcp_request(request)
+-        assert "Archive created successfully" in response["result"]["content"][0]["text"]
++        assert (
++            "Archive created successfully" in response["result"]["content"][0]["text"]
++        )
+ 
+         # Step 5: Verify final archive exists
+         request = {
+             "jsonrpc": "2.0",
+             "id": 700,
+             "method": "tools/call",
+             "params": {
+                 "name": "check_file_exists",
+                 "arguments": {
+                     "directory": "completed",
+-                    "path": "processed_data_archive.zip"
+-                }
+-            }
++                    "path": "processed_data_archive.zip",
++                },
++            },
+         }
+         response = await mcp_server.handle_mcp_request(request)
+         assert '"exists": true' in response["result"]["content"][0]["text"]
+ 
+-    async def test_backup_and_restore_workflow(self, mcp_server: MCPFileIOServer, sample_files):
++    async def test_backup_and_restore_workflow(
++        self, mcp_server: MCPFileIOServer, sample_files
++    ):
+         """Test backup and restore workflow."""
+         await mcp_server.handle_initialize({})
+ 
+         # Step 1: Create backup of all files in ingress
+         files_to_backup = [
+             {"directory": "ingress", "path": "sample.txt"},
+             {"directory": "ingress", "path": "data.json"},
+-            {"directory": "ingress", "path": "data.csv"}
++            {"directory": "ingress", "path": "data.csv"},
+         ]
+ 
+         request = {
+             "jsonrpc": "2.0",
+             "id": 800,
+@@ -473,16 +493,18 @@
+             "params": {
+                 "name": "compress_file",
+                 "arguments": {
+                     "files": files_to_backup,
+                     "archive_directory": "completed",
+-                    "archive_path": "backup_archive.zip"
+-                }
+-            }
++                    "archive_path": "backup_archive.zip",
++                },
++            },
+         }
+         response = await mcp_server.handle_mcp_request(request)
+-        assert "Archive created successfully" in response["result"]["content"][0]["text"]
++        assert (
++            "Archive created successfully" in response["result"]["content"][0]["text"]
++        )
+ 
+         # Step 2: Simulate data loss - delete original files
+         for file_info in files_to_backup:
+             request = {
+                 "jsonrpc": "2.0",
+@@ -491,16 +513,18 @@
+                 "params": {
+                     "name": "delete_file",
+                     "arguments": {
+                         "directory": file_info["directory"],
+                         "path": file_info["path"],
+-                        "confirm": True
+-                    }
+-                }
++                        "confirm": True,
++                    },
++                },
+             }
+             response = await mcp_server.handle_mcp_request(request)
+-            assert "File deleted successfully" in response["result"]["content"][0]["text"]
++            assert (
++                "File deleted successfully" in response["result"]["content"][0]["text"]
++            )
+ 
+         # Step 3: Restore from backup
+         request = {
+             "jsonrpc": "2.0",
+             "id": 1000,
+@@ -509,16 +533,18 @@
+                 "name": "extract_file",
+                 "arguments": {
+                     "archive_directory": "completed",
+                     "archive_path": "backup_archive.zip",
+                     "extract_directory": "ingress",
+-                    "extract_path": "."
+-                }
+-            }
++                    "extract_path": ".",
++                },
++            },
+         }
+         response = await mcp_server.handle_mcp_request(request)
+-        assert "Archive extracted successfully" in response["result"]["content"][0]["text"]
++        assert (
++            "Archive extracted successfully" in response["result"]["content"][0]["text"]
++        )
+ 
+         # Step 4: Verify files are restored
+         for file_info in files_to_backup:
+             request = {
+                 "jsonrpc": "2.0",
+@@ -526,11 +552,11 @@
+                 "method": "tools/call",
+                 "params": {
+                     "name": "check_file_exists",
+                     "arguments": {
+                         "directory": file_info["directory"],
+-                        "path": file_info["path"]
+-                    }
+-                }
++                        "path": file_info["path"],
++                    },
++                },
+             }
+             response = await mcp_server.handle_mcp_request(request)
+-            assert '"exists": true' in response["result"]["content"][0]["text"]
+\ No newline at end of file
++            assert '"exists": true' in response["result"]["content"][0]["text"]
+would reformat /mnt/blk/lostboy/mcp/fileio/tests/integration/test_mcp_server.py
+--- /mnt/blk/lostboy/mcp/fileio/tests/unit/test_file_operations.py	2025-09-20 21:57:07.974048+00:00
++++ /mnt/blk/lostboy/mcp/fileio/tests/unit/test_file_operations.py	2025-09-20 22:23:34.413328+00:00
+@@ -13,194 +13,196 @@
+ 
+ @pytest.mark.unit
+ class TestFileOperationsBasic:
+     """Test basic file operations."""
+ 
+-    async def test_read_file_success(self, file_ops: FileOperations, sample_files: dict):
++    async def test_read_file_success(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test successful file reading."""
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "sample.txt"
+-        })
++        result = await file_ops._read_file(
++            {"directory": "ingress", "path": "sample.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert isinstance(result[0], types.TextContent)
+         assert result[0].text == sample_files["text"]["content"]
+ 
+     async def test_read_file_not_found(self, file_ops: FileOperations):
+         """Test reading non-existent file."""
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "nonexistent.txt"
+-        })
++        result = await file_ops._read_file(
++            {"directory": "ingress", "path": "nonexistent.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert "File not found" in result[0].text
+ 
+-    async def test_read_file_directory_not_file(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_read_file_directory_not_file(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test reading a directory instead of file."""
+         (temp_base_dir / "ingress" / "testdir").mkdir()
+ 
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "testdir"
+-        })
++        result = await file_ops._read_file({"directory": "ingress", "path": "testdir"})
+ 
+         assert len(result) == 1
+         assert "Path is not a file" in result[0].text
+ 
+-    async def test_read_file_encoding(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_read_file_encoding(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test reading file with different encoding."""
+         test_file = temp_base_dir / "ingress" / "utf8.txt"
+         test_content = "Hello 世界! 🌍"
+         test_file.write_text(test_content, encoding="utf-8")
+ 
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "utf8.txt",
+-            "encoding": "utf-8"
+-        })
++        result = await file_ops._read_file(
++            {"directory": "ingress", "path": "utf8.txt", "encoding": "utf-8"}
++        )
+ 
+         assert len(result) == 1
+         assert result[0].text == test_content
+ 
+-    async def test_write_file_success(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_write_file_success(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test successful file writing."""
+         test_content = "New file content"
+ 
+-        result = await file_ops._write_file({
+-            "directory": "wip",
+-            "path": "new_file.txt",
+-            "content": test_content
+-        })
++        result = await file_ops._write_file(
++            {"directory": "wip", "path": "new_file.txt", "content": test_content}
++        )
+ 
+         assert len(result) == 1
+         assert "File written successfully" in result[0].text
+ 
+         # Verify file was created
+         written_file = temp_base_dir / "wip" / "new_file.txt"
+         assert written_file.exists()
+         assert written_file.read_text() == test_content
+ 
+-    async def test_write_file_create_directories(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_write_file_create_directories(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test writing file with directory creation."""
+         test_content = "Content in nested dir"
+ 
+-        result = await file_ops._write_file({
+-            "directory": "wip",
+-            "path": "nested/dir/file.txt",
+-            "content": test_content,
+-            "create_dirs": True
+-        })
++        result = await file_ops._write_file(
++            {
++                "directory": "wip",
++                "path": "nested/dir/file.txt",
++                "content": test_content,
++                "create_dirs": True,
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "File written successfully" in result[0].text
+ 
+         # Verify nested structure was created
+         written_file = temp_base_dir / "wip" / "nested" / "dir" / "file.txt"
+         assert written_file.exists()
+         assert written_file.read_text() == test_content
+ 
+-    async def test_append_to_file_success(self, file_ops: FileOperations, sample_files: dict):
++    async def test_append_to_file_success(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test successful file appending."""
+         append_content = "\nAppended line"
+ 
+-        result = await file_ops._append_to_file({
+-            "directory": "ingress",
+-            "path": "sample.txt",
+-            "content": append_content
+-        })
++        result = await file_ops._append_to_file(
++            {"directory": "ingress", "path": "sample.txt", "content": append_content}
++        )
+ 
+         assert len(result) == 1
+         assert "Content appended" in result[0].text
+ 
+         # Verify content was appended
+         file_content = sample_files["text"]["path"].read_text()
+         assert file_content.endswith(append_content)
+ 
+     async def test_append_to_nonexistent_file(self, file_ops: FileOperations):
+         """Test appending to non-existent file."""
+-        result = await file_ops._append_to_file({
+-            "directory": "wip",
+-            "path": "nonexistent.txt",
+-            "content": "test"
+-        })
++        result = await file_ops._append_to_file(
++            {"directory": "wip", "path": "nonexistent.txt", "content": "test"}
++        )
+ 
+         assert len(result) == 1
+         assert "File not found" in result[0].text
+ 
+-    async def test_delete_file_success(self, file_ops: FileOperations, sample_files: dict):
++    async def test_delete_file_success(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test successful file deletion."""
+-        result = await file_ops._delete_file({
+-            "directory": "ingress",
+-            "path": "empty.txt",
+-            "confirm": True
+-        })
++        result = await file_ops._delete_file(
++            {"directory": "ingress", "path": "empty.txt", "confirm": True}
++        )
+ 
+         assert len(result) == 1
+         assert "File deleted successfully" in result[0].text
+         assert not sample_files["empty"]["path"].exists()
+ 
+     async def test_delete_file_requires_confirmation(self, file_ops: FileOperations):
+         """Test deletion requires confirmation."""
+-        result = await file_ops._delete_file({
+-            "directory": "ingress",
+-            "path": "sample.txt",
+-            "confirm": False
+-        })
++        result = await file_ops._delete_file(
++            {"directory": "ingress", "path": "sample.txt", "confirm": False}
++        )
+ 
+         assert len(result) == 1
+         assert "confirmation flag" in result[0].text
+ 
+     async def test_get_file_info(self, file_ops: FileOperations, sample_files: dict):
+         """Test getting file information."""
+-        result = await file_ops._get_file_info({
+-            "directory": "ingress",
+-            "path": "sample.txt"
+-        })
++        result = await file_ops._get_file_info(
++            {"directory": "ingress", "path": "sample.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert "File Information:" in result[0].text
+         # Should contain JSON with file metadata
+         assert '"size"' in result[0].text
+         assert '"modified"' in result[0].text
+ 
+-    async def test_check_file_exists_true(self, file_ops: FileOperations, sample_files: dict):
++    async def test_check_file_exists_true(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test checking existing file."""
+-        result = await file_ops._check_file_exists({
+-            "directory": "ingress",
+-            "path": "sample.txt"
+-        })
++        result = await file_ops._check_file_exists(
++            {"directory": "ingress", "path": "sample.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert '"exists": true' in result[0].text
+         assert '"is_file": true' in result[0].text
+ 
+     async def test_check_file_exists_false(self, file_ops: FileOperations):
+         """Test checking non-existent file."""
+-        result = await file_ops._check_file_exists({
+-            "directory": "ingress",
+-            "path": "nonexistent.txt"
+-        })
++        result = await file_ops._check_file_exists(
++            {"directory": "ingress", "path": "nonexistent.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert '"exists": false' in result[0].text
+         assert '"is_file": false' in result[0].text
+ 
+ 
+ @pytest.mark.unit
+ class TestFileOperationsAdvanced:
+     """Test advanced file operations."""
+ 
+-    async def test_copy_file_success(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_copy_file_success(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test successful file copying."""
+-        result = await file_ops._copy_file({
+-            "source_directory": "ingress",
+-            "source_path": "sample.txt",
+-            "target_directory": "wip",
+-            "target_path": "copied_sample.txt"
+-        })
++        result = await file_ops._copy_file(
++            {
++                "source_directory": "ingress",
++                "source_path": "sample.txt",
++                "target_directory": "wip",
++                "target_path": "copied_sample.txt",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "File copied successfully" in result[0].text
+ 
+         # Verify file was copied
+@@ -209,63 +211,75 @@
+         assert target_file.read_text() == sample_files["text"]["content"]
+ 
+         # Verify original still exists
+         assert sample_files["text"]["path"].exists()
+ 
+-    async def test_copy_file_overwrite_protection(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_copy_file_overwrite_protection(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test copy operation overwrite protection."""
+         # Create target file first
+         target_file = temp_base_dir / "wip" / "existing.txt"
+         target_file.write_text("existing content")
+ 
+-        result = await file_ops._copy_file({
+-            "source_directory": "ingress",
+-            "source_path": "sample.txt",
+-            "target_directory": "wip",
+-            "target_path": "existing.txt",
+-            "overwrite": False
+-        })
++        result = await file_ops._copy_file(
++            {
++                "source_directory": "ingress",
++                "source_path": "sample.txt",
++                "target_directory": "wip",
++                "target_path": "existing.txt",
++                "overwrite": False,
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "Target file exists and overwrite=false" in result[0].text
+ 
+         # Verify original content preserved
+         assert target_file.read_text() == "existing content"
+ 
+-    async def test_copy_file_with_overwrite(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_copy_file_with_overwrite(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test copy operation with overwrite enabled."""
+         # Create target file first
+         target_file = temp_base_dir / "wip" / "existing.txt"
+         target_file.write_text("existing content")
+ 
+-        result = await file_ops._copy_file({
+-            "source_directory": "ingress",
+-            "source_path": "sample.txt",
+-            "target_directory": "wip",
+-            "target_path": "existing.txt",
+-            "overwrite": True
+-        })
++        result = await file_ops._copy_file(
++            {
++                "source_directory": "ingress",
++                "source_path": "sample.txt",
++                "target_directory": "wip",
++                "target_path": "existing.txt",
++                "overwrite": True,
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "File copied successfully" in result[0].text
+ 
+         # Verify content was overwritten
+         assert target_file.read_text() == sample_files["text"]["content"]
+ 
+-    async def test_move_file_success(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_move_file_success(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test successful file moving."""
+         # Create a file to move
+         source_file = temp_base_dir / "ingress" / "to_move.txt"
+         source_content = "Content to move"
+         source_file.write_text(source_content)
+ 
+-        result = await file_ops._move_file({
+-            "source_directory": "ingress",
+-            "source_path": "to_move.txt",
+-            "target_directory": "completed",
+-            "target_path": "moved_file.txt"
+-        })
++        result = await file_ops._move_file(
++            {
++                "source_directory": "ingress",
++                "source_path": "to_move.txt",
++                "target_directory": "completed",
++                "target_path": "moved_file.txt",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "File moved successfully" in result[0].text
+ 
+         # Verify file was moved
+@@ -274,79 +288,91 @@
+         assert target_file.read_text() == source_content
+ 
+         # Verify source no longer exists
+         assert not source_file.exists()
+ 
+-    async def test_compress_file_success(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_compress_file_success(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test successful file compression."""
+-        result = await file_ops._compress_file({
+-            "files": [
+-                {"directory": "ingress", "path": "sample.txt"},
+-                {"directory": "ingress", "path": "data.json"}
+-            ],
+-            "archive_directory": "completed",
+-            "archive_path": "test_archive.zip"
+-        })
++        result = await file_ops._compress_file(
++            {
++                "files": [
++                    {"directory": "ingress", "path": "sample.txt"},
++                    {"directory": "ingress", "path": "data.json"},
++                ],
++                "archive_directory": "completed",
++                "archive_path": "test_archive.zip",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "Archive created successfully" in result[0].text
+         assert "(2 files)" in result[0].text
+ 
+         # Verify archive was created
+         archive_file = temp_base_dir / "completed" / "test_archive.zip"
+         assert archive_file.exists()
+ 
+         # Verify archive contents
+-        with zipfile.ZipFile(archive_file, 'r') as zipf:
++        with zipfile.ZipFile(archive_file, "r") as zipf:
+             files_in_archive = zipf.namelist()
+             assert "sample.txt" in files_in_archive
+             assert "data.json" in files_in_archive
+ 
+     async def test_compress_file_nonexistent_source(self, file_ops: FileOperations):
+         """Test compression with non-existent source file."""
+-        result = await file_ops._compress_file({
+-            "files": [
+-                {"directory": "ingress", "path": "nonexistent.txt"}
+-            ],
+-            "archive_directory": "completed",
+-            "archive_path": "test_archive.zip"
+-        })
++        result = await file_ops._compress_file(
++            {
++                "files": [{"directory": "ingress", "path": "nonexistent.txt"}],
++                "archive_directory": "completed",
++                "archive_path": "test_archive.zip",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "Source file not found" in result[0].text
+ 
+-    async def test_extract_file_success(self, file_ops: FileOperations, sample_archive: Path, temp_base_dir: Path):
++    async def test_extract_file_success(
++        self, file_ops: FileOperations, sample_archive: Path, temp_base_dir: Path
++    ):
+         """Test successful file extraction."""
+-        result = await file_ops._extract_file({
+-            "archive_directory": "completed",
+-            "archive_path": "test_archive.zip",
+-            "extract_directory": "wip",
+-            "extract_path": "extracted"
+-        })
++        result = await file_ops._extract_file(
++            {
++                "archive_directory": "completed",
++                "archive_path": "test_archive.zip",
++                "extract_directory": "wip",
++                "extract_path": "extracted",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "Archive extracted successfully" in result[0].text
+         assert "2 files" in result[0].text
+ 
+         # Verify extracted files
+         extract_dir = temp_base_dir / "wip" / "extracted"
+         assert (extract_dir / "sample.txt").exists()
+         assert (extract_dir / "data.json").exists()
+ 
+-    async def test_extract_file_security_check(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_extract_file_security_check(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test extraction security against path traversal."""
+         # Create malicious archive
+         malicious_archive = temp_base_dir / "completed" / "malicious.zip"
+-        with zipfile.ZipFile(malicious_archive, 'w') as zipf:
++        with zipfile.ZipFile(malicious_archive, "w") as zipf:
+             zipf.writestr("../../../etc/passwd", "malicious content")
+ 
+-        result = await file_ops._extract_file({
+-            "archive_directory": "completed",
+-            "archive_path": "malicious.zip",
+-            "extract_directory": "wip",
+-            "extract_path": "extracted"
+-        })
++        result = await file_ops._extract_file(
++            {
++                "archive_directory": "completed",
++                "archive_path": "malicious.zip",
++                "extract_directory": "wip",
++                "extract_path": "extracted",
++            }
++        )
+ 
+         assert len(result) == 1
+         assert "Unsafe path in archive" in result[0].text
+ 
+ 
+@@ -359,23 +385,25 @@
+         result = await file_ops._file_lock({"action": "list_active"})
+ 
+         assert len(result) == 1
+         assert "No active file locks" in result[0].text
+ 
+-    async def test_file_lock_status_unlocked(self, file_ops: FileOperations, sample_files: dict):
++    async def test_file_lock_status_unlocked(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test checking status of unlocked file."""
+-        result = await file_ops._file_lock({
+-            "action": "status",
+-            "directory": "ingress",
+-            "path": "sample.txt"
+-        })
++        result = await file_ops._file_lock(
++            {"action": "status", "directory": "ingress", "path": "sample.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert "is unlocked" in result[0].text
+ 
+     @pytest.mark.asyncio
+-    async def test_file_locking_context_manager(self, file_ops: FileOperations, sample_files: dict):
++    async def test_file_locking_context_manager(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test file locking context manager."""
+         file_path = sample_files["text"]["path"]
+ 
+         # Test that lock is acquired and released
+         async def test_lock():
+@@ -388,36 +416,42 @@
+             # After context, lock should be released
+             assert str(file_path) not in file_ops._file_locks
+ 
+         await test_lock()
+ 
+-    async def test_file_lock_timeout(self, file_ops: FileOperations, sample_files: dict):
++    async def test_file_lock_timeout(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test file lock timeout behavior."""
+         file_path = sample_files["text"]["path"]
+ 
+         # First acquire a lock
+         with file_ops._acquire_file_lock(file_path, timeout=1.0):
+             # Try to acquire the same lock from another context (should timeout)
+             with pytest.raises(TimeoutError):
+                 with file_ops._acquire_file_lock(file_path, timeout=0.1):
+                     pass
+ 
+-    async def test_file_lock_concurrent_operations(self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path):
++    async def test_file_lock_concurrent_operations(
++        self, file_ops: FileOperations, sample_files: dict, temp_base_dir: Path
++    ):
+         """Test that copy operations use file locking properly."""
+         # This test verifies that copy operations acquire locks
+         # We can't easily test race conditions in unit tests, but we can verify the lock mechanism is called
+ 
+-        with patch.object(file_ops, '_acquire_file_lock') as mock_lock:
++        with patch.object(file_ops, "_acquire_file_lock") as mock_lock:
+             mock_lock.return_value.__enter__ = MagicMock()
+             mock_lock.return_value.__exit__ = MagicMock()
+ 
+-            await file_ops._copy_file({
+-                "source_directory": "ingress",
+-                "source_path": "sample.txt",
+-                "target_directory": "wip",
+-                "target_path": "copied.txt"
+-            })
++            await file_ops._copy_file(
++                {
++                    "source_directory": "ingress",
++                    "source_path": "sample.txt",
++                    "target_directory": "wip",
++                    "target_path": "copied.txt",
++                }
++            )
+ 
+             # Verify locks were acquired for both source and target
+             assert mock_lock.call_count == 2
+ 
+ 
+@@ -426,52 +460,50 @@
+     """Test error handling in file operations."""
+ 
+     async def test_invalid_directory(self, file_ops: FileOperations):
+         """Test operations with invalid directory."""
+         with pytest.raises(ValueError, match="Directory not allowed"):
+-            await file_ops._read_file({
+-                "directory": "invalid_dir",
+-                "path": "test.txt"
+-            })
++            await file_ops._read_file({"directory": "invalid_dir", "path": "test.txt"})
+ 
+     async def test_path_traversal_prevention(self, file_ops: FileOperations):
+         """Test path traversal attack prevention."""
+         with pytest.raises(ValueError, match="Path escape attempt"):
+-            await file_ops._read_file({
+-                "directory": "ingress",
+-                "path": "../../../etc/passwd"
+-            })
++            await file_ops._read_file(
++                {"directory": "ingress", "path": "../../../etc/passwd"}
++            )
+ 
+     async def test_file_size_limit(self, file_ops: FileOperations, temp_base_dir: Path):
+         """Test file size limit enforcement."""
+         # Create a large file that exceeds the limit
+         large_file = temp_base_dir / "ingress" / "too_large.txt"
+         large_content = "x" * (file_ops.config.max_file_size + 1)
+         large_file.write_text(large_content)
+ 
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "too_large.txt"
+-        })
++        result = await file_ops._read_file(
++            {"directory": "ingress", "path": "too_large.txt"}
++        )
+ 
+         assert len(result) == 1
+         assert "File too large" in result[0].text
+ 
+-    async def test_binary_file_handling(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_binary_file_handling(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test handling of binary files."""
+         # Create a binary file
+         binary_file = temp_base_dir / "ingress" / "binary.bin"
+         binary_file.write_bytes(bytes(range(256)))
+ 
+-        result = await file_ops._read_file({
+-            "directory": "ingress",
+-            "path": "binary.bin"
+-        })
+-
+-        assert len(result) == 1
+-        assert ("Cannot decode file" in result[0].text or
+-                "encoding" in result[0].text.lower())
++        result = await file_ops._read_file(
++            {"directory": "ingress", "path": "binary.bin"}
++        )
++
++        assert len(result) == 1
++        assert (
++            "Cannot decode file" in result[0].text
++            or "encoding" in result[0].text.lower()
++        )
+ 
+ 
+ @pytest.mark.unit
+ class TestToolsDefinition:
+     """Test tools definition and schema."""
+@@ -480,35 +512,45 @@
+         """Test that get_tools returns all expected operations."""
+         tools = file_ops.get_tools()
+         tool_names = [tool.name for tool in tools]
+ 
+         expected_tools = [
+-            "read_file", "get_file_info", "check_file_exists",
+-            "write_file", "append_to_file", "delete_file",
+-            "copy_file", "move_file", "compress_file", "extract_file", "file_lock"
++            "read_file",
++            "get_file_info",
++            "check_file_exists",
++            "write_file",
++            "append_to_file",
++            "delete_file",
++            "copy_file",
++            "move_file",
++            "compress_file",
++            "extract_file",
++            "file_lock",
+         ]
+ 
+         for expected_tool in expected_tools:
+             assert expected_tool in tool_names
+ 
+     def test_tools_have_valid_schemas(self, file_ops: FileOperations):
+         """Test that all tools have valid JSON schemas."""
+         tools = file_ops.get_tools()
+ 
+         for tool in tools:
+-            assert hasattr(tool, 'name')
+-            assert hasattr(tool, 'description')
+-            assert hasattr(tool, 'inputSchema')
++            assert hasattr(tool, "name")
++            assert hasattr(tool, "description")
++            assert hasattr(tool, "inputSchema")
+ 
+             # Verify schema has required structure
+             schema = tool.inputSchema
+             assert isinstance(schema, dict)
+-            assert 'type' in schema
+-            assert schema['type'] == 'object'
+-            assert 'properties' in schema
+-
+-    def test_conditional_tools_based_on_config(self, test_config: FileIOConfig, temp_base_dir: Path):
++            assert "type" in schema
++            assert schema["type"] == "object"
++            assert "properties" in schema
++
++    def test_conditional_tools_based_on_config(
++        self, test_config: FileIOConfig, temp_base_dir: Path
++    ):
+         """Test that tools are conditionally included based on config."""
+         # Test with write disabled
+         test_config.security.enable_write = False
+         file_ops_no_write = FileOperations(test_config)
+         tools_no_write = [tool.name for tool in file_ops_no_write.get_tools()]
+@@ -524,6 +566,6 @@
+ 
+         assert "delete_file" not in tools_no_delete
+ 
+         # Advanced operations should always be available
+         assert "copy_file" in tools_no_delete
+-        assert "move_file" in tools_no_delete
+\ No newline at end of file
++        assert "move_file" in tools_no_delete
+--- /mnt/blk/lostboy/mcp/fileio/mcp_server.py	2025-09-20 19:39:49.267727+00:00
++++ /mnt/blk/lostboy/mcp/fileio/mcp_server.py	2025-09-20 22:23:34.414065+00:00
+@@ -50,10 +50,11 @@
+ # MongoDB Models for logging
+ class PyObjectId(ObjectId):
+     @classmethod
+     def __get_pydantic_core_schema__(cls, source_type, handler):
+         from pydantic_core import core_schema
++
+         return core_schema.no_info_plain_validator_function(cls.validate)
+ 
+     @classmethod
+     def validate(cls, v):
+         if isinstance(v, ObjectId):
+@@ -97,11 +98,11 @@
+ 
+         # Setup FastAPI app
+         self.app = FastAPI(
+             title="FileIO MCP Server",
+             description="MCP JSON-RPC server for file operations",
+-            version="1.0.0"
++            version="1.0.0",
+         )
+ 
+         # Add CORS middleware
+         self.app.add_middleware(
+             CORSMiddleware,
+@@ -123,15 +124,15 @@
+         log_path = Path(self.config.logging.file)
+         log_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+         logging.basicConfig(
+             level=getattr(logging, self.config.logging.level),
+-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
++            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+             handlers=[
+                 logging.FileHandler(self.config.logging.file),
+-                logging.StreamHandler()
+-            ]
++                logging.StreamHandler(),
++            ],
+         )
+         self.logger = logging.getLogger("fileio-mcp")
+ 
+     def setup_operations(self):
+         """Setup file and directory operations."""
+@@ -173,21 +174,19 @@
+                 "protocol_version": self.protocol_version,
+                 "initialized": self.initialized,
+                 "mongodb_connected": self.database is not None,
+                 "base_path_exists": self.config.base_path.exists(),
+                 "allowed_directories": [
+-                    {
+-                        "name": d,
+-                        "exists": (self.config.base_path / d).exists()
+-                    } for d in self.config.allowed_directories
+-                ]
++                    {"name": d, "exists": (self.config.base_path / d).exists()}
++                    for d in self.config.allowed_directories
++                ],
+             }
+ 
+     async def connect_mongodb(self):
+         """Connect to MongoDB."""
+         try:
+-            mongo_url = os.getenv('MONGO_URI')
++            mongo_url = os.getenv("MONGO_URI")
+             if mongo_url is None:
+                 raise ValueError("MONGO_URI environment variable not set")
+ 
+             self.mongodb_client = AsyncIOMotorClient(mongo_url)
+             self.database = self.mongodb_client.orenco_pydantic
+@@ -198,13 +197,19 @@
+             return True
+         except Exception as e:
+             self.logger.error(f"Failed to connect to MongoDB: {e}")
+             return False
+ 
+-    async def log_execution(self, method: str, params: Dict[str, Any],
+-                          result: Dict[str, Any] = None, error: Dict[str, Any] = None,
+-                          execution_time: float = 0.0, client_info: Dict[str, Any] = None):
++    async def log_execution(
++        self,
++        method: str,
++        params: Dict[str, Any],
++        result: Dict[str, Any] = None,
++        error: Dict[str, Any] = None,
++        execution_time: float = 0.0,
++        client_info: Dict[str, Any] = None,
++    ):
+         """Log MCP execution to MongoDB."""
+         if self.database is None:
+             return
+ 
+         try:
+@@ -212,44 +217,41 @@
+                 method=method,
+                 params=params,
+                 result=result,
+                 error=error,
+                 execution_time=execution_time,
+-                client_info=client_info
++                client_info=client_info,
+             )
+ 
+             await self.database.mcp_executions.insert_one(execution.dict(by_alias=True))
+         except Exception as e:
+             self.logger.error(f"Failed to log execution: {e}")
+ 
+-    def create_response(self, request_id: Union[str, int, None], result: Dict[str, Any]) -> Dict[str, Any]:
++    def create_response(
++        self, request_id: Union[str, int, None], result: Dict[str, Any]
++    ) -> Dict[str, Any]:
+         """Create a successful MCP response."""
+-        return {
+-            "jsonrpc": "2.0",
+-            "id": request_id,
+-            "result": result
+-        }
+-
+-    def create_error_response(self, request_id: Union[str, int, None], code: int,
+-                            message: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
++        return {"jsonrpc": "2.0", "id": request_id, "result": result}
++
++    def create_error_response(
++        self,
++        request_id: Union[str, int, None],
++        code: int,
++        message: str,
++        data: Dict[str, Any] = None,
++    ) -> Dict[str, Any]:
+         """Create an MCP error response."""
+-        error = {
+-            "code": code,
+-            "message": message
+-        }
++        error = {"code": code, "message": message}
+         if data:
+             error["data"] = data
+ 
+-        return {
+-            "jsonrpc": "2.0",
+-            "id": request_id,
+-            "error": error
+-        }
++        return {"jsonrpc": "2.0", "id": request_id, "error": error}
+ 
+     async def handle_mcp_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+         """Handle incoming MCP JSON-RPC request."""
+         import time
++
+         start_time = time.time()
+ 
+         # Validate JSON-RPC structure
+         if not isinstance(request_data, dict):
+             return self.create_error_response(None, -32600, "Invalid Request")
+@@ -274,11 +276,13 @@
+             elif method == "tools/list":
+                 result = await self.handle_tools_list(params)
+             elif method == "tools/call":
+                 result = await self.handle_tools_call(params)
+             else:
+-                return self.create_error_response(request_id, -32601, f"Method not found: {method}")
++                return self.create_error_response(
++                    request_id, -32601, f"Method not found: {method}"
++                )
+ 
+             execution_time = time.time() - start_time
+ 
+             # Log successful execution
+             await self.log_execution(method, params, result, None, execution_time)
+@@ -310,41 +314,37 @@
+ 
+         self.logger.info(f"Initialized MCP server for client: {client_info}")
+ 
+         return {
+             "protocolVersion": self.protocol_version,
+-            "capabilities": {
+-                "tools": {
+-                    "listChanged": True
+-                },
+-                "logging": {}
+-            },
+-            "serverInfo": {
+-                "name": "fileio-mcp",
+-                "version": "1.0.0"
+-            }
++            "capabilities": {"tools": {"listChanged": True}, "logging": {}},
++            "serverInfo": {"name": "fileio-mcp", "version": "1.0.0"},
+         }
+ 
+     async def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+         """Handle tools/list request."""
+         tools = []
+ 
+         # Get tools from file operations
+         for tool in self.file_ops.get_tools():
+-            tools.append({
+-                "name": tool.name,
+-                "description": tool.description,
+-                "inputSchema": tool.inputSchema
+-            })
++            tools.append(
++                {
++                    "name": tool.name,
++                    "description": tool.description,
++                    "inputSchema": tool.inputSchema,
++                }
++            )
+ 
+         # Get tools from directory operations
+         for tool in self.dir_ops.get_tools():
+-            tools.append({
+-                "name": tool.name,
+-                "description": tool.description,
+-                "inputSchema": tool.inputSchema
+-            })
++            tools.append(
++                {
++                    "name": tool.name,
++                    "description": tool.description,
++                    "inputSchema": tool.inputSchema,
++                }
++            )
+ 
+         return {"tools": tools}
+ 
+     async def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
+         """Handle tools/call request."""
+@@ -368,37 +368,35 @@
+             raise ValueError(f"Unknown tool: {tool_name}")
+ 
+         # Convert MCP TextContent to proper format
+         content = []
+         for item in result:
+-            content.append({
+-                "type": item.type,
+-                "text": item.text
+-            })
+-
+-        return {
+-            "content": content,
+-            "isError": False
+-        }
++            content.append({"type": item.type, "text": item.text})
++
++        return {"content": content, "isError": False}
+ 
+     def run(self):
+         """Run the MCP server."""
+         self.logger.info(f"Starting FileIO MCP Server v1.0.0")
+         self.logger.info(f"Protocol version: {self.protocol_version}")
+         self.logger.info(f"Monitoring directories: {self.config.allowed_directories}")
+         self.logger.info(f"Base path: {self.config.base_path}")
+ 
+         try:
+-            self.logger.info(f"MCP Server running on http://{self.config.server.host}:{self.config.server.port}")
+-            self.logger.info(f"MCP endpoint: http://{self.config.server.host}:{self.config.server.port}/mcp")
++            self.logger.info(
++                f"MCP Server running on http://{self.config.server.host}:{self.config.server.port}"
++            )
++            self.logger.info(
++                f"MCP endpoint: http://{self.config.server.host}:{self.config.server.port}/mcp"
++            )
+ 
+             # Run the FastAPI server
+             uvicorn.run(
+                 self.app,
+                 host=self.config.server.host,
+                 port=self.config.server.port,
+-                log_level="info"
++                log_level="info",
+             )
+         except KeyboardInterrupt:
+             self.logger.info("Server stopped by user")
+         except Exception as e:
+             self.logger.error(f"Server error: {e}", exc_info=True)
+@@ -411,19 +409,17 @@
+     """Main entry point for the MCP server."""
+     import argparse
+ 
+     parser = argparse.ArgumentParser(description="FileIO MCP JSON-RPC Server")
+     parser.add_argument(
+-        "--config",
+-        default="config.json",
+-        help="Path to configuration file"
++        "--config", default="config.json", help="Path to configuration file"
+     )
+ 
+     args = parser.parse_args()
+ 
+     # Run the server
+     server = MCPFileIOServer(args.config)
+     server.run()
+ 
+ 
+ if __name__ == "__main__":
+-    main()
+\ No newline at end of file
++    main()
+would reformat /mnt/blk/lostboy/mcp/fileio/tests/unit/test_file_operations.py
+would reformat /mnt/blk/lostboy/mcp/fileio/mcp_server.py
+--- /mnt/blk/lostboy/mcp/fileio/tests/performance/test_performance.py	2025-09-20 21:59:10.805594+00:00
++++ /mnt/blk/lostboy/mcp/fileio/tests/performance/test_performance.py	2025-09-20 22:23:34.426630+00:00
+@@ -15,11 +15,13 @@
+ @pytest.mark.performance
+ class TestFileOperationPerformance:
+     """Test performance of file operations."""
+ 
+     @pytest.mark.slow
+-    async def test_read_file_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_read_file_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test read file performance with various file sizes."""
+         # Create test files of different sizes
+         file_sizes = [1, 10, 100, 1000]  # KB
+         files = {}
+ 
+@@ -35,14 +37,13 @@
+             times = []
+ 
+             for _ in range(5):  # 5 iterations for average
+                 start_time = time.time()
+ 
+-                result = await file_ops._read_file({
+-                    "directory": "ingress",
+-                    "path": file_path.name
+-                })
++                result = await file_ops._read_file(
++                    {"directory": "ingress", "path": file_path.name}
++                )
+ 
+                 end_time = time.time()
+                 times.append(end_time - start_time)
+ 
+                 # Verify successful read
+@@ -52,18 +53,24 @@
+             avg_time = statistics.mean(times)
+             results[size_kb] = avg_time
+ 
+             # Performance assertions (should complete within reasonable time)
+             if size_kb <= 100:
+-                assert avg_time < 0.1, f"Reading {size_kb}KB file took {avg_time:.3f}s (expected < 0.1s)"
++                assert (
++                    avg_time < 0.1
++                ), f"Reading {size_kb}KB file took {avg_time:.3f}s (expected < 0.1s)"
+             else:
+-                assert avg_time < 0.5, f"Reading {size_kb}KB file took {avg_time:.3f}s (expected < 0.5s)"
++                assert (
++                    avg_time < 0.5
++                ), f"Reading {size_kb}KB file took {avg_time:.3f}s (expected < 0.5s)"
+ 
+         print(f"\nRead performance results: {results}")
+ 
+     @pytest.mark.slow
+-    async def test_write_file_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_write_file_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test write file performance with various file sizes."""
+         file_sizes = [1, 10, 100, 1000]  # KB
+         results = {}
+ 
+         for size_kb in file_sizes:
+@@ -71,15 +78,17 @@
+             times = []
+ 
+             for i in range(5):  # 5 iterations for average
+                 start_time = time.time()
+ 
+-                result = await file_ops._write_file({
+-                    "directory": "wip",
+-                    "path": f"perf_write_{size_kb}kb_{i}.txt",
+-                    "content": content
+-                })
++                result = await file_ops._write_file(
++                    {
++                        "directory": "wip",
++                        "path": f"perf_write_{size_kb}kb_{i}.txt",
++                        "content": content,
++                    }
++                )
+ 
+                 end_time = time.time()
+                 times.append(end_time - start_time)
+ 
+                 # Verify successful write
+@@ -89,18 +98,24 @@
+             avg_time = statistics.mean(times)
+             results[size_kb] = avg_time
+ 
+             # Performance assertions
+             if size_kb <= 100:
+-                assert avg_time < 0.1, f"Writing {size_kb}KB file took {avg_time:.3f}s (expected < 0.1s)"
++                assert (
++                    avg_time < 0.1
++                ), f"Writing {size_kb}KB file took {avg_time:.3f}s (expected < 0.1s)"
+             else:
+-                assert avg_time < 0.5, f"Writing {size_kb}KB file took {avg_time:.3f}s (expected < 0.5s)"
++                assert (
++                    avg_time < 0.5
++                ), f"Writing {size_kb}KB file took {avg_time:.3f}s (expected < 0.5s)"
+ 
+         print(f"\nWrite performance results: {results}")
+ 
+     @pytest.mark.slow
+-    async def test_copy_file_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_copy_file_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test copy file performance."""
+         # Create source files
+         file_sizes = [10, 100, 500]  # KB
+         results = {}
+ 
+@@ -112,16 +127,18 @@
+             times = []
+ 
+             for i in range(3):  # 3 iterations for average
+                 start_time = time.time()
+ 
+-                result = await file_ops._copy_file({
+-                    "source_directory": "ingress",
+-                    "source_path": f"copy_source_{size_kb}kb.txt",
+-                    "target_directory": "wip",
+-                    "target_path": f"copy_target_{size_kb}kb_{i}.txt"
+-                })
++                result = await file_ops._copy_file(
++                    {
++                        "source_directory": "ingress",
++                        "source_path": f"copy_source_{size_kb}kb.txt",
++                        "target_directory": "wip",
++                        "target_path": f"copy_target_{size_kb}kb_{i}.txt",
++                    }
++                )
+ 
+                 end_time = time.time()
+                 times.append(end_time - start_time)
+ 
+                 # Verify successful copy
+@@ -130,40 +147,48 @@
+ 
+             avg_time = statistics.mean(times)
+             results[size_kb] = avg_time
+ 
+             # Performance assertions
+-            assert avg_time < 0.2, f"Copying {size_kb}KB file took {avg_time:.3f}s (expected < 0.2s)"
++            assert (
++                avg_time < 0.2
++            ), f"Copying {size_kb}KB file took {avg_time:.3f}s (expected < 0.2s)"
+ 
+         print(f"\nCopy performance results: {results}")
+ 
+     @pytest.mark.slow
+-    async def test_compression_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_compression_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test compression performance with multiple files."""
+         # Create multiple files to compress
+         num_files = [5, 20, 50]
+         results = {}
+ 
+         for count in num_files:
+             # Create files
+             files = []
+             for i in range(count):
+-                content = f"File {i} content with some repeated text " * 100  # ~3KB per file
++                content = (
++                    f"File {i} content with some repeated text " * 100
++                )  # ~3KB per file
+                 file_path = temp_base_dir / "ingress" / f"compress_test_{count}_{i}.txt"
+                 file_path.write_text(content)
+                 files.append({"directory": "ingress", "path": file_path.name})
+ 
+             times = []
+ 
+             for iteration in range(3):
+                 start_time = time.time()
+ 
+-                result = await file_ops._compress_file({
+-                    "files": files,
+-                    "archive_directory": "completed",
+-                    "archive_path": f"perf_archive_{count}_{iteration}.zip"
+-                })
++                result = await file_ops._compress_file(
++                    {
++                        "files": files,
++                        "archive_directory": "completed",
++                        "archive_path": f"perf_archive_{count}_{iteration}.zip",
++                    }
++                )
+ 
+                 end_time = time.time()
+                 times.append(end_time - start_time)
+ 
+                 # Verify successful compression
+@@ -172,26 +197,30 @@
+ 
+             avg_time = statistics.mean(times)
+             results[count] = avg_time
+ 
+             # Performance assertions
+-            assert avg_time < 1.0, f"Compressing {count} files took {avg_time:.3f}s (expected < 1.0s)"
++            assert (
++                avg_time < 1.0
++            ), f"Compressing {count} files took {avg_time:.3f}s (expected < 1.0s)"
+ 
+         print(f"\nCompression performance results: {results}")
+ 
+     @pytest.mark.slow
+-    async def test_extraction_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_extraction_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test extraction performance with archives of different sizes."""
+         # Create archives with different numbers of files
+         file_counts = [10, 50, 100]
+         results = {}
+ 
+         for count in file_counts:
+             # Create archive
+             archive_path = temp_base_dir / "completed" / f"extract_perf_{count}.zip"
+ 
+-            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
++            with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                 for i in range(count):
+                     content = f"Extract test file {i} content " * 50  # ~1.5KB per file
+                     zipf.writestr(f"extract_file_{i}.txt", content)
+ 
+             times = []
+@@ -199,16 +228,18 @@
+             for iteration in range(3):
+                 extract_path = f"extracted_{count}_{iteration}"
+ 
+                 start_time = time.time()
+ 
+-                result = await file_ops._extract_file({
+-                    "archive_directory": "completed",
+-                    "archive_path": f"extract_perf_{count}.zip",
+-                    "extract_directory": "wip",
+-                    "extract_path": extract_path
+-                })
++                result = await file_ops._extract_file(
++                    {
++                        "archive_directory": "completed",
++                        "archive_path": f"extract_perf_{count}.zip",
++                        "extract_directory": "wip",
++                        "extract_path": extract_path,
++                    }
++                )
+ 
+                 end_time = time.time()
+                 times.append(end_time - start_time)
+ 
+                 # Verify successful extraction
+@@ -217,31 +248,35 @@
+ 
+             avg_time = statistics.mean(times)
+             results[count] = avg_time
+ 
+             # Performance assertions
+-            assert avg_time < 2.0, f"Extracting {count} files took {avg_time:.3f}s (expected < 2.0s)"
++            assert (
++                avg_time < 2.0
++            ), f"Extracting {count} files took {avg_time:.3f}s (expected < 2.0s)"
+ 
+         print(f"\nExtraction performance results: {results}")
+ 
+ 
+ @pytest.mark.performance
+ class TestConcurrencyPerformance:
+     """Test concurrent operation performance."""
+ 
+     @pytest.mark.slow
+-    async def test_concurrent_read_operations(self, file_ops: FileOperations, sample_files: dict):
++    async def test_concurrent_read_operations(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test performance of concurrent read operations."""
+         num_concurrent = [5, 10, 20]
+         results = {}
+ 
+         for concurrent_count in num_concurrent:
++
+             async def read_task():
+-                return await file_ops._read_file({
+-                    "directory": "ingress",
+-                    "path": "sample.txt"
+-                })
++                return await file_ops._read_file(
++                    {"directory": "ingress", "path": "sample.txt"}
++                )
+ 
+             times = []
+ 
+             for _ in range(3):  # 3 test runs
+                 start_time = time.time()
+@@ -260,27 +295,32 @@
+ 
+             avg_time = statistics.mean(times)
+             results[concurrent_count] = avg_time
+ 
+             # Performance assertions
+-            assert avg_time < 1.0, f"{concurrent_count} concurrent reads took {avg_time:.3f}s (expected < 1.0s)"
++            assert (
++                avg_time < 1.0
++            ), f"{concurrent_count} concurrent reads took {avg_time:.3f}s (expected < 1.0s)"
+ 
+         print(f"\nConcurrent read performance results: {results}")
+ 
+     @pytest.mark.slow
+     async def test_concurrent_write_operations(self, file_ops: FileOperations):
+         """Test performance of concurrent write operations."""
+         num_concurrent = [5, 10, 20]
+         results = {}
+ 
+         for concurrent_count in num_concurrent:
++
+             async def write_task(task_id: int):
+-                return await file_ops._write_file({
+-                    "directory": "wip",
+-                    "path": f"concurrent_write_{task_id}.txt",
+-                    "content": f"Concurrent write content for task {task_id}"
+-                })
++                return await file_ops._write_file(
++                    {
++                        "directory": "wip",
++                        "path": f"concurrent_write_{task_id}.txt",
++                        "content": f"Concurrent write content for task {task_id}",
++                    }
++                )
+ 
+             times = []
+ 
+             for iteration in range(3):  # 3 test runs
+                 start_time = time.time()
+@@ -300,41 +340,48 @@
+ 
+             avg_time = statistics.mean(times)
+             results[concurrent_count] = avg_time
+ 
+             # Performance assertions
+-            assert avg_time < 2.0, f"{concurrent_count} concurrent writes took {avg_time:.3f}s (expected < 2.0s)"
++            assert (
++                avg_time < 2.0
++            ), f"{concurrent_count} concurrent writes took {avg_time:.3f}s (expected < 2.0s)"
+ 
+         print(f"\nConcurrent write performance results: {results}")
+ 
+     @pytest.mark.slow
+-    async def test_mixed_concurrent_operations(self, file_ops: FileOperations, sample_files: dict):
++    async def test_mixed_concurrent_operations(
++        self, file_ops: FileOperations, sample_files: dict
++    ):
+         """Test performance of mixed concurrent operations."""
+         # Test with mix of reads, writes, and copies
+         operations_count = 20
+         results = {}
+ 
+         async def read_task():
+-            return await file_ops._read_file({
+-                "directory": "ingress",
+-                "path": "sample.txt"
+-            })
++            return await file_ops._read_file(
++                {"directory": "ingress", "path": "sample.txt"}
++            )
+ 
+         async def write_task(task_id: int):
+-            return await file_ops._write_file({
+-                "directory": "wip",
+-                "path": f"mixed_write_{task_id}.txt",
+-                "content": f"Mixed operation content {task_id}"
+-            })
++            return await file_ops._write_file(
++                {
++                    "directory": "wip",
++                    "path": f"mixed_write_{task_id}.txt",
++                    "content": f"Mixed operation content {task_id}",
++                }
++            )
+ 
+         async def copy_task(task_id: int):
+-            return await file_ops._copy_file({
+-                "source_directory": "ingress",
+-                "source_path": "sample.txt",
+-                "target_directory": "wip",
+-                "target_path": f"mixed_copy_{task_id}.txt"
+-            })
++            return await file_ops._copy_file(
++                {
++                    "source_directory": "ingress",
++                    "source_path": "sample.txt",
++                    "target_directory": "wip",
++                    "target_path": f"mixed_copy_{task_id}.txt",
++                }
++            )
+ 
+         times = []
+ 
+         for iteration in range(3):
+             start_time = time.time()
+@@ -364,21 +411,25 @@
+ 
+         avg_time = statistics.mean(times)
+         results[operations_count] = avg_time
+ 
+         # Performance assertions
+-        assert avg_time < 3.0, f"{operations_count} mixed concurrent operations took {avg_time:.3f}s (expected < 3.0s)"
++        assert (
++            avg_time < 3.0
++        ), f"{operations_count} mixed concurrent operations took {avg_time:.3f}s (expected < 3.0s)"
+ 
+         print(f"\nMixed concurrent operations performance results: {results}")
+ 
+ 
+ @pytest.mark.performance
+ class TestLockingPerformance:
+     """Test file locking performance impact."""
+ 
+     @pytest.mark.slow
+-    async def test_locking_overhead(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_locking_overhead(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test performance overhead of file locking."""
+         # Create test file
+         test_content = "x" * 10240  # 10KB
+         test_file = temp_base_dir / "ingress" / "lock_test.txt"
+         test_file.write_text(test_content)
+@@ -386,32 +437,38 @@
+         # Test copy operations with locking (normal operation)
+         lock_times = []
+         for i in range(10):
+             start_time = time.time()
+ 
+-            result = await file_ops._copy_file({
+-                "source_directory": "ingress",
+-                "source_path": "lock_test.txt",
+-                "target_directory": "wip",
+-                "target_path": f"locked_copy_{i}.txt"
+-            })
++            result = await file_ops._copy_file(
++                {
++                    "source_directory": "ingress",
++                    "source_path": "lock_test.txt",
++                    "target_directory": "wip",
++                    "target_path": f"locked_copy_{i}.txt",
++                }
++            )
+ 
+             end_time = time.time()
+             lock_times.append(end_time - start_time)
+ 
+             assert "File copied successfully" in result[0].text
+ 
+         avg_lock_time = statistics.mean(lock_times)
+ 
+         # Performance assertion
+-        assert avg_lock_time < 0.1, f"Copy with locking took {avg_lock_time:.3f}s (expected < 0.1s)"
++        assert (
++            avg_lock_time < 0.1
++        ), f"Copy with locking took {avg_lock_time:.3f}s (expected < 0.1s)"
+ 
+         print(f"\nLocking overhead results:")
+         print(f"Average copy time with locking: {avg_lock_time:.4f}s")
+ 
+     @pytest.mark.slow
+-    async def test_lock_contention_performance(self, file_ops: FileOperations, temp_base_dir: Path):
++    async def test_lock_contention_performance(
++        self, file_ops: FileOperations, temp_base_dir: Path
++    ):
+         """Test performance under lock contention."""
+         # Create test file
+         test_content = "Lock contention test content"
+         test_file = temp_base_dir / "ingress" / "contention_test.txt"
+         test_file.write_text(test_content)
+@@ -419,17 +476,20 @@
+         # Test concurrent operations on the same file
+         num_concurrent = 5
+         times = []
+ 
+         for iteration in range(3):
++
+             async def copy_task(task_id: int):
+-                return await file_ops._copy_file({
+-                    "source_directory": "ingress",
+-                    "source_path": "contention_test.txt",
+-                    "target_directory": "wip",
+-                    "target_path": f"contention_copy_{iteration}_{task_id}.txt"
+-                })
++                return await file_ops._copy_file(
++                    {
++                        "source_directory": "ingress",
++                        "source_path": "contention_test.txt",
++                        "target_directory": "wip",
++                        "target_path": f"contention_copy_{iteration}_{task_id}.txt",
++                    }
++                )
+ 
+             start_time = time.time()
+ 
+             # Execute concurrent copies of the same file
+             tasks = [copy_task(i) for i in range(num_concurrent)]
+@@ -444,21 +504,27 @@
+                 assert "File copied successfully" in result[0].text
+ 
+         avg_time = statistics.mean(times)
+ 
+         # Performance assertion - should handle contention gracefully
+-        assert avg_time < 2.0, f"Concurrent operations with contention took {avg_time:.3f}s (expected < 2.0s)"
+-
+-        print(f"\nLock contention performance: {avg_time:.4f}s for {num_concurrent} concurrent operations")
++        assert (
++            avg_time < 2.0
++        ), f"Concurrent operations with contention took {avg_time:.3f}s (expected < 2.0s)"
++
++        print(
++            f"\nLock contention performance: {avg_time:.4f}s for {num_concurrent} concurrent operations"
++        )
+ 
+ 
+ @pytest.mark.performance
+ class TestMCPServerPerformance:
+     """Test MCP server performance."""
+ 
+     @pytest.mark.slow
+-    async def test_mcp_request_throughput(self, mcp_server: MCPFileIOServer, sample_files: dict):
++    async def test_mcp_request_throughput(
++        self, mcp_server: MCPFileIOServer, sample_files: dict
++    ):
+         """Test MCP server request throughput."""
+         await mcp_server.handle_initialize({})
+ 
+         # Test throughput with simple operations
+         num_requests = 100
+@@ -473,15 +539,12 @@
+                     "jsonrpc": "2.0",
+                     "id": batch * 1000 + i,
+                     "method": "tools/call",
+                     "params": {
+                         "name": "read_file",
+-                        "arguments": {
+-                            "directory": "ingress",
+-                            "path": "sample.txt"
+-                        }
+-                    }
++                        "arguments": {"directory": "ingress", "path": "sample.txt"},
++                    },
+                 }
+                 requests.append(request)
+ 
+             start_time = time.time()
+ 
+@@ -503,33 +566,28 @@
+ 
+         avg_time = statistics.mean(times)
+         avg_throughput = num_requests / avg_time
+ 
+         # Performance assertion
+-        assert avg_throughput > 50, f"Average throughput {avg_throughput:.1f} req/s (expected > 50 req/s)"
++        assert (
++            avg_throughput > 50
++        ), f"Average throughput {avg_throughput:.1f} req/s (expected > 50 req/s)"
+ 
+         print(f"\nMCP server throughput: {avg_throughput:.1f} requests/second")
+ 
+     @pytest.mark.slow
+-    async def test_mcp_request_latency(self, mcp_server: MCPFileIOServer, sample_files: dict):
++    async def test_mcp_request_latency(
++        self, mcp_server: MCPFileIOServer, sample_files: dict
++    ):
+         """Test MCP server request latency."""
+         await mcp_server.handle_initialize({})
+ 
+         # Test latency for different types of operations
+         operations = [
+-            ("check_file_exists", {
+-                "directory": "ingress",
+-                "path": "sample.txt"
+-            }),
+-            ("read_file", {
+-                "directory": "ingress",
+-                "path": "sample.txt"
+-            }),
+-            ("get_file_info", {
+-                "directory": "ingress",
+-                "path": "sample.txt"
+-            })
++            ("check_file_exists", {"directory": "ingress", "path": "sample.txt"}),
++            ("read_file", {"directory": "ingress", "path": "sample.txt"}),
++            ("get_file_info", {"directory": "ingress", "path": "sample.txt"}),
+         ]
+ 
+         results = {}
+ 
+         for op_name, arguments in operations:
+@@ -538,14 +596,11 @@
+             for i in range(20):  # 20 measurements per operation
+                 request = {
+                     "jsonrpc": "2.0",
+                     "id": i,
+                     "method": "tools/call",
+-                    "params": {
+-                        "name": op_name,
+-                        "arguments": arguments
+-                    }
++                    "params": {"name": op_name, "arguments": arguments},
+                 }
+ 
+                 start_time = time.time()
+                 response = await mcp_server.handle_mcp_request(request)
+                 end_time = time.time()
+@@ -557,17 +612,18 @@
+                 assert "result" in response
+ 
+             avg_latency = statistics.mean(times)
+             p95_latency = sorted(times)[int(len(times) * 0.95)]
+ 
+-            results[op_name] = {
+-                "avg": avg_latency,
+-                "p95": p95_latency
+-            }
++            results[op_name] = {"avg": avg_latency, "p95": p95_latency}
+ 
+             # Performance assertions
+-            assert avg_latency < 50, f"{op_name} average latency {avg_latency:.1f}ms (expected < 50ms)"
+-            assert p95_latency < 100, f"{op_name} P95 latency {p95_latency:.1f}ms (expected < 100ms)"
++            assert (
++                avg_latency < 50
++            ), f"{op_name} average latency {avg_latency:.1f}ms (expected < 50ms)"
++            assert (
++                p95_latency < 100
++            ), f"{op_name} P95 latency {p95_latency:.1f}ms (expected < 100ms)"
+ 
+         print(f"\nMCP server latency results:")
+         for op_name, metrics in results.items():
+-            print(f"{op_name}: avg={metrics['avg']:.1f}ms, p95={metrics['p95']:.1f}ms")
+\ No newline at end of file
++            print(f"{op_name}: avg={metrics['avg']:.1f}ms, p95={metrics['p95']:.1f}ms")
+would reformat /mnt/blk/lostboy/mcp/fileio/tests/performance/test_performance.py
+--- /mnt/blk/lostboy/mcp/fileio/file_ops.py	2025-09-20 21:47:04.154196+00:00
++++ /mnt/blk/lostboy/mcp/fileio/file_ops.py	2025-09-20 22:23:34.564888+00:00
+@@ -12,21 +12,22 @@
+ from mcp import types
+ 
+ from config import FileIOConfig
+ from utils import create_file_info, validate_file_extension, safe_json_dumps
+ 
++
+ class FileOperations:
+     """Handle file-level operations."""
+ 
+     def __init__(self, config: FileIOConfig):
+         self.config = config
+         self._file_locks = {}  # Track active file locks
+ 
+     @contextmanager
+     def _acquire_file_lock(self, file_path: Path, timeout: float = 30.0):
+         """Context manager for file locking."""
+-        lock_file = file_path.with_suffix(file_path.suffix + '.lock')
++        lock_file = file_path.with_suffix(file_path.suffix + ".lock")
+         lock_fd = None
+ 
+         try:
+             # Create lock file
+             lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+@@ -37,18 +38,20 @@
+                 try:
+                     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                     break
+                 except BlockingIOError:
+                     if time.time() - start_time > timeout:
+-                        raise TimeoutError(f"Could not acquire lock for {file_path} within {timeout}s")
++                        raise TimeoutError(
++                            f"Could not acquire lock for {file_path} within {timeout}s"
++                        )
+                     time.sleep(0.1)
+ 
+             # Store lock info
+             self._file_locks[str(file_path)] = {
+-                'lock_file': lock_file,
+-                'lock_fd': lock_fd,
+-                'timestamp': time.time()
++                "lock_file": lock_file,
++                "lock_fd": lock_fd,
++                "timestamp": time.time(),
+             }
+ 
+             yield
+ 
+         finally:
+@@ -78,131 +81,133 @@
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "path": {
+                             "type": "string",
+-                            "description": "File path relative to directory"
++                            "description": "File path relative to directory",
+                         },
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory (ingress, wip, or completed)"
++                            "description": "Target directory (ingress, wip, or completed)",
+                         },
+                         "encoding": {
+                             "type": "string",
+                             "default": "utf-8",
+-                            "description": "Text encoding to use"
+-                        }
++                            "description": "Text encoding to use",
++                        },
+                     },
+-                    "required": ["path", "directory"]
+-                }
++                    "required": ["path", "directory"],
++                },
+             ),
+             types.Tool(
+                 name="get_file_info",
+                 description="Get detailed file metadata and information",
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "path": {
+                             "type": "string",
+-                            "description": "File path relative to directory"
++                            "description": "File path relative to directory",
+                         },
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
+-                        }
++                            "description": "Target directory",
++                        },
+                     },
+-                    "required": ["path", "directory"]
+-                }
++                    "required": ["path", "directory"],
++                },
+             ),
+             types.Tool(
+                 name="check_file_exists",
+                 description="Check if a file exists in the specified directory",
+                 inputSchema={
+                     "type": "object",
+                     "properties": {
+                         "path": {
+                             "type": "string",
+-                            "description": "File path relative to directory"
++                            "description": "File path relative to directory",
+                         },
+                         "directory": {
+                             "type": "string",
+                             "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
+-                        }
++                            "description": "Target directory",
++                        },
+                     },
+-                    "required": ["path", "directory"]
+-                }
+-            )
++                    "required": ["path", "directory"],
++                },
++            ),
+         ]
+ 
+         # Add write operations if enabled
+         if self.config.security.enable_write:
+-            tools.extend([
+-                types.Tool(
+-                    name="write_file",
+-                    description="Write content to file in workflow directories",
+-                    inputSchema={
+-                        "type": "object",
+-                        "properties": {
+-                            "path": {
+-                                "type": "string",
+-                                "description": "File path relative to directory"
+-                            },
+-                            "content": {
+-                                "type": "string",
+-                                "description": "Content to write to file"
+-                            },
+-                            "directory": {
+-                                "type": "string",
+-                                "enum": self.config.allowed_directories,
+-                                "description": "Target directory"
+-                            },
+-                            "encoding": {
+-                                "type": "string",
+-                                "default": "utf-8",
+-                                "description": "Text encoding to use"
+-                            },
+-                            "create_dirs": {
+-                                "type": "boolean",
+-                                "default": True,
+-                                "description": "Create parent directories if needed"
+-                            }
+-                        },
+-                        "required": ["path", "content", "directory"]
+-                    }
+-                ),
+-                types.Tool(
+-                    name="append_to_file",
+-                    description="Append content to existing file",
+-                    inputSchema={
+-                        "type": "object",
+-                        "properties": {
+-                            "path": {
+-                                "type": "string",
+-                                "description": "File path relative to directory"
+-                            },
+-                            "content": {
+-                                "type": "string",
+-                                "description": "Content to append to file"
+-                            },
+-                            "directory": {
+-                                "type": "string",
+-                                "enum": self.config.allowed_directories,
+-                                "description": "Target directory"
+-                            },
+-                            "encoding": {
+-                                "type": "string",
+-                                "default": "utf-8",
+-                                "description": "Text encoding to use"
+-                            }
+-                        },
+-                        "required": ["path", "content", "directory"]
+-                    }
+-                )
+-            ])
++            tools.extend(
++                [
++                    types.Tool(
++                        name="write_file",
++                        description="Write content to file in workflow directories",
++                        inputSchema={
++                            "type": "object",
++                            "properties": {
++                                "path": {
++                                    "type": "string",
++                                    "description": "File path relative to directory",
++                                },
++                                "content": {
++                                    "type": "string",
++                                    "description": "Content to write to file",
++                                },
++                                "directory": {
++                                    "type": "string",
++                                    "enum": self.config.allowed_directories,
++                                    "description": "Target directory",
++                                },
++                                "encoding": {
++                                    "type": "string",
++                                    "default": "utf-8",
++                                    "description": "Text encoding to use",
++                                },
++                                "create_dirs": {
++                                    "type": "boolean",
++                                    "default": True,
++                                    "description": "Create parent directories if needed",
++                                },
++                            },
++                            "required": ["path", "content", "directory"],
++                        },
++                    ),
++                    types.Tool(
++                        name="append_to_file",
++                        description="Append content to existing file",
++                        inputSchema={
++                            "type": "object",
++                            "properties": {
++                                "path": {
++                                    "type": "string",
++                                    "description": "File path relative to directory",
++                                },
++                                "content": {
++                                    "type": "string",
++                                    "description": "Content to append to file",
++                                },
++                                "directory": {
++                                    "type": "string",
++                                    "enum": self.config.allowed_directories,
++                                    "description": "Target directory",
++                                },
++                                "encoding": {
++                                    "type": "string",
++                                    "default": "utf-8",
++                                    "description": "Text encoding to use",
++                                },
++                            },
++                            "required": ["path", "content", "directory"],
++                        },
++                    ),
++                ]
++            )
+ 
+         # Add delete operations if enabled
+         if self.config.security.enable_delete:
+             tools.append(
+                 types.Tool(
+@@ -211,184 +216,200 @@
+                     inputSchema={
+                         "type": "object",
+                         "properties": {
+                             "path": {
+                                 "type": "string",
+-                                "description": "File path relative to directory"
++                                "description": "File path relative to directory",
+                             },
+                             "directory": {
+                                 "type": "string",
+                                 "enum": self.config.allowed_directories,
+-                                "description": "Target directory"
++                                "description": "Target directory",
+                             },
+                             "confirm": {
+                                 "type": "boolean",
+                                 "default": False,
+-                                "description": "Confirmation flag required for deletion"
+-                            }
+-                        },
+-                        "required": ["path", "directory", "confirm"]
+-                    }
++                                "description": "Confirmation flag required for deletion",
++                            },
++                        },
++                        "required": ["path", "directory", "confirm"],
++                    },
+                 )
+             )
+ 
+         # Add advanced file operations (always available)
+-        tools.extend([
+-            types.Tool(
+-                name="copy_file",
+-                description="Copy file between workflow directories with locking",
+-                inputSchema={
+-                    "type": "object",
+-                    "properties": {
+-                        "source_path": {
+-                            "type": "string",
+-                            "description": "Source file path relative to source directory"
+-                        },
+-                        "source_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Source directory"
+-                        },
+-                        "target_path": {
+-                            "type": "string",
+-                            "description": "Target file path relative to target directory"
+-                        },
+-                        "target_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
+-                        },
+-                        "overwrite": {
+-                            "type": "boolean",
+-                            "default": False,
+-                            "description": "Overwrite target file if it exists"
+-                        }
++        tools.extend(
++            [
++                types.Tool(
++                    name="copy_file",
++                    description="Copy file between workflow directories with locking",
++                    inputSchema={
++                        "type": "object",
++                        "properties": {
++                            "source_path": {
++                                "type": "string",
++                                "description": "Source file path relative to source directory",
++                            },
++                            "source_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Source directory",
++                            },
++                            "target_path": {
++                                "type": "string",
++                                "description": "Target file path relative to target directory",
++                            },
++                            "target_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Target directory",
++                            },
++                            "overwrite": {
++                                "type": "boolean",
++                                "default": False,
++                                "description": "Overwrite target file if it exists",
++                            },
++                        },
++                        "required": [
++                            "source_path",
++                            "source_directory",
++                            "target_path",
++                            "target_directory",
++                        ],
+                     },
+-                    "required": ["source_path", "source_directory", "target_path", "target_directory"]
+-                }
+-            ),
+-            types.Tool(
+-                name="move_file",
+-                description="Move/rename file between workflow directories with locking",
+-                inputSchema={
+-                    "type": "object",
+-                    "properties": {
+-                        "source_path": {
+-                            "type": "string",
+-                            "description": "Source file path relative to source directory"
+-                        },
+-                        "source_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Source directory"
+-                        },
+-                        "target_path": {
+-                            "type": "string",
+-                            "description": "Target file path relative to target directory"
+-                        },
+-                        "target_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
+-                        },
+-                        "overwrite": {
+-                            "type": "boolean",
+-                            "default": False,
+-                            "description": "Overwrite target file if it exists"
+-                        }
++                ),
++                types.Tool(
++                    name="move_file",
++                    description="Move/rename file between workflow directories with locking",
++                    inputSchema={
++                        "type": "object",
++                        "properties": {
++                            "source_path": {
++                                "type": "string",
++                                "description": "Source file path relative to source directory",
++                            },
++                            "source_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Source directory",
++                            },
++                            "target_path": {
++                                "type": "string",
++                                "description": "Target file path relative to target directory",
++                            },
++                            "target_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Target directory",
++                            },
++                            "overwrite": {
++                                "type": "boolean",
++                                "default": False,
++                                "description": "Overwrite target file if it exists",
++                            },
++                        },
++                        "required": [
++                            "source_path",
++                            "source_directory",
++                            "target_path",
++                            "target_directory",
++                        ],
+                     },
+-                    "required": ["source_path", "source_directory", "target_path", "target_directory"]
+-                }
+-            ),
+-            types.Tool(
+-                name="compress_file",
+-                description="Create ZIP archive from files",
+-                inputSchema={
+-                    "type": "object",
+-                    "properties": {
+-                        "files": {
+-                            "type": "array",
+-                            "items": {
+-                                "type": "object",
+-                                "properties": {
+-                                    "path": {"type": "string"},
+-                                    "directory": {
+-                                        "type": "string",
+-                                        "enum": self.config.allowed_directories
+-                                    }
++                ),
++                types.Tool(
++                    name="compress_file",
++                    description="Create ZIP archive from files",
++                    inputSchema={
++                        "type": "object",
++                        "properties": {
++                            "files": {
++                                "type": "array",
++                                "items": {
++                                    "type": "object",
++                                    "properties": {
++                                        "path": {"type": "string"},
++                                        "directory": {
++                                            "type": "string",
++                                            "enum": self.config.allowed_directories,
++                                        },
++                                    },
++                                    "required": ["path", "directory"],
+                                 },
+-                                "required": ["path", "directory"]
+-                            },
+-                            "description": "List of files to compress"
+-                        },
+-                        "archive_path": {
+-                            "type": "string",
+-                            "description": "Output archive path relative to directory"
+-                        },
+-                        "archive_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Directory for output archive"
+-                        }
++                                "description": "List of files to compress",
++                            },
++                            "archive_path": {
++                                "type": "string",
++                                "description": "Output archive path relative to directory",
++                            },
++                            "archive_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Directory for output archive",
++                            },
++                        },
++                        "required": ["files", "archive_path", "archive_directory"],
+                     },
+-                    "required": ["files", "archive_path", "archive_directory"]
+-                }
+-            ),
+-            types.Tool(
+-                name="extract_file",
+-                description="Extract ZIP archive to directory",
+-                inputSchema={
+-                    "type": "object",
+-                    "properties": {
+-                        "archive_path": {
+-                            "type": "string",
+-                            "description": "Archive file path relative to directory"
+-                        },
+-                        "archive_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Directory containing archive"
+-                        },
+-                        "extract_directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Directory to extract files to"
+-                        },
+-                        "extract_path": {
+-                            "type": "string",
+-                            "default": ".",
+-                            "description": "Subdirectory path within extract_directory"
+-                        }
++                ),
++                types.Tool(
++                    name="extract_file",
++                    description="Extract ZIP archive to directory",
++                    inputSchema={
++                        "type": "object",
++                        "properties": {
++                            "archive_path": {
++                                "type": "string",
++                                "description": "Archive file path relative to directory",
++                            },
++                            "archive_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Directory containing archive",
++                            },
++                            "extract_directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Directory to extract files to",
++                            },
++                            "extract_path": {
++                                "type": "string",
++                                "default": ".",
++                                "description": "Subdirectory path within extract_directory",
++                            },
++                        },
++                        "required": [
++                            "archive_path",
++                            "archive_directory",
++                            "extract_directory",
++                        ],
+                     },
+-                    "required": ["archive_path", "archive_directory", "extract_directory"]
+-                }
+-            ),
+-            types.Tool(
+-                name="file_lock",
+-                description="Manage file locks for preventing race conditions",
+-                inputSchema={
+-                    "type": "object",
+-                    "properties": {
+-                        "path": {
+-                            "type": "string",
+-                            "description": "File path relative to directory"
+-                        },
+-                        "directory": {
+-                            "type": "string",
+-                            "enum": self.config.allowed_directories,
+-                            "description": "Target directory"
+-                        },
+-                        "action": {
+-                            "type": "string",
+-                            "enum": ["status", "list_active"],
+-                            "description": "Lock action: status (check if locked), list_active (list all active locks)"
+-                        }
++                ),
++                types.Tool(
++                    name="file_lock",
++                    description="Manage file locks for preventing race conditions",
++                    inputSchema={
++                        "type": "object",
++                        "properties": {
++                            "path": {
++                                "type": "string",
++                                "description": "File path relative to directory",
++                            },
++                            "directory": {
++                                "type": "string",
++                                "enum": self.config.allowed_directories,
++                                "description": "Target directory",
++                            },
++                            "action": {
++                                "type": "string",
++                                "enum": ["status", "list_active"],
++                                "description": "Lock action: status (check if locked), list_active (list all active locks)",
++                            },
++                        },
++                        "required": ["action"],
+                     },
+-                    "required": ["action"]
+-                }
+-            )
+-        ])
++                ),
++            ]
++        )
+ 
+         return tools
+ 
+     async def execute(self, name: str, arguments: dict) -> List[types.TextContent]:
+         """Execute file operation tool."""
+@@ -414,67 +435,76 @@
+             elif name == "extract_file":
+                 return await self._extract_file(arguments)
+             elif name == "file_lock":
+                 return await self._file_lock(arguments)
+             else:
+-                return [types.TextContent(
+-                    type="text",
+-                    text=f"Unknown or disabled operation: {name}"
+-                )]
++                return [
++                    types.TextContent(
++                        type="text", text=f"Unknown or disabled operation: {name}"
++                    )
++                ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error in {name}: {str(e)}"
+-            )]
++            return [types.TextContent(type="text", text=f"Error in {name}: {str(e)}")]
+ 
+     async def _read_file(self, args: dict) -> List[types.TextContent]:
+         """Read file content."""
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+         if not file_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File not found: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File not found: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if not file_path.is_file():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Path is not a file: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Path is not a file: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         # Check file size
+         if file_path.stat().st_size > self.config.max_file_size:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File too large (max: {self.config.max_file_size} bytes)"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File too large (max: {self.config.max_file_size} bytes)",
++                )
++            ]
+ 
+         try:
+             content = file_path.read_text(encoding=args.get("encoding", "utf-8"))
+             return [types.TextContent(type="text", text=content)]
+         except UnicodeDecodeError:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Cannot decode file with {args.get('encoding', 'utf-8')} encoding. File may be binary."
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Cannot decode file with {args.get('encoding', 'utf-8')} encoding. File may be binary.",
++                )
++            ]
+ 
+     async def _get_file_info(self, args: dict) -> List[types.TextContent]:
+         """Get file information."""
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+         if not file_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File not found: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File not found: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         info = create_file_info(file_path, self.config.base_path)
+-        return [types.TextContent(
+-            type="text",
+-            text=f"File Information:\n{safe_json_dumps(info)}"
+-        )]
++        return [
++            types.TextContent(
++                type="text", text=f"File Information:\n{safe_json_dumps(info)}"
++            )
++        ]
+ 
+     async def _check_file_exists(self, args: dict) -> List[types.TextContent]:
+         """Check if file exists."""
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+@@ -483,348 +513,404 @@
+ 
+         result = {
+             "path": str(file_path.relative_to(self.config.base_path)),
+             "exists": exists,
+             "is_file": is_file,
+-            "is_directory": file_path.is_dir() if exists else False
++            "is_directory": file_path.is_dir() if exists else False,
+         }
+ 
+-        return [types.TextContent(
+-            type="text",
+-            text=safe_json_dumps(result)
+-        )]
++        return [types.TextContent(type="text", text=safe_json_dumps(result))]
+ 
+     async def _write_file(self, args: dict) -> List[types.TextContent]:
+         """Write content to file."""
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+         # Check file extension
+         if not validate_file_extension(file_path, self.config.allowed_extensions):
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File extension not allowed: {file_path.suffix}. Allowed: {self.config.allowed_extensions}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File extension not allowed: {file_path.suffix}. Allowed: {self.config.allowed_extensions}",
++                )
++            ]
+ 
+         # Create parent directories if needed
+         if args.get("create_dirs", True):
+             file_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+         try:
+             file_path.write_text(
+-                args["content"],
+-                encoding=args.get("encoding", "utf-8")
++                args["content"], encoding=args.get("encoding", "utf-8")
+             )
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File written successfully: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File written successfully: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error writing file: {str(e)}"
+-            )]
++            return [
++                types.TextContent(type="text", text=f"Error writing file: {str(e)}")
++            ]
+ 
+     async def _append_to_file(self, args: dict) -> List[types.TextContent]:
+         """Append content to file."""
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+         if not file_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File not found: {file_path.relative_to(self.config.base_path)}"
+-            )]
+-
+-        try:
+-            with open(file_path, 'a', encoding=args.get("encoding", "utf-8")) as f:
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File not found: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
++
++        try:
++            with open(file_path, "a", encoding=args.get("encoding", "utf-8")) as f:
+                 f.write(args["content"])
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Content appended to: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Content appended to: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error appending to file: {str(e)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text", text=f"Error appending to file: {str(e)}"
++                )
++            ]
+ 
+     async def _delete_file(self, args: dict) -> List[types.TextContent]:
+         """Delete a file."""
+         # Check confirmation flag
+         if not args.get("confirm", False):
+-            return [types.TextContent(
+-                type="text",
+-                text="File deletion requires confirmation flag to be set to true"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text="File deletion requires confirmation flag to be set to true",
++                )
++            ]
+ 
+         file_path = self._get_safe_path(args["directory"], args["path"])
+ 
+         if not file_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File not found: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File not found: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if not file_path.is_file():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Path is not a file: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Path is not a file: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         try:
+             # Since we're in sandbox mode, no need to check file extensions
+             file_path.unlink()
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File deleted successfully: {file_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File deleted successfully: {file_path.relative_to(self.config.base_path)}",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error deleting file: {str(e)}"
+-            )]
++            return [
++                types.TextContent(type="text", text=f"Error deleting file: {str(e)}")
++            ]
+ 
+     async def _copy_file(self, args: dict) -> List[types.TextContent]:
+         """Copy file between directories with locking."""
+         source_path = self._get_safe_path(args["source_directory"], args["source_path"])
+         target_path = self._get_safe_path(args["target_directory"], args["target_path"])
+ 
+         if not source_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Source file not found: {source_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Source file not found: {source_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if not source_path.is_file():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Source path is not a file: {source_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Source path is not a file: {source_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if target_path.exists() and not args.get("overwrite", False):
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Target file exists and overwrite=false: {target_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Target file exists and overwrite=false: {target_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         try:
+             # Use file locking for both source and target
+-            with self._acquire_file_lock(source_path), self._acquire_file_lock(target_path):
++            with (
++                self._acquire_file_lock(source_path),
++                self._acquire_file_lock(target_path),
++            ):
+                 # Create target directory if needed
+                 target_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+                 # Copy file
+                 shutil.copy2(source_path, target_path)
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File copied successfully: {source_path.relative_to(self.config.base_path)} -> {target_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File copied successfully: {source_path.relative_to(self.config.base_path)} -> {target_path.relative_to(self.config.base_path)}",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error copying file: {str(e)}"
+-            )]
++            return [
++                types.TextContent(type="text", text=f"Error copying file: {str(e)}")
++            ]
+ 
+     async def _move_file(self, args: dict) -> List[types.TextContent]:
+         """Move/rename file between directories with locking."""
+         source_path = self._get_safe_path(args["source_directory"], args["source_path"])
+         target_path = self._get_safe_path(args["target_directory"], args["target_path"])
+ 
+         if not source_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Source file not found: {source_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Source file not found: {source_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if not source_path.is_file():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Source path is not a file: {source_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Source path is not a file: {source_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if target_path.exists() and not args.get("overwrite", False):
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Target file exists and overwrite=false: {target_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Target file exists and overwrite=false: {target_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         try:
+             # Use file locking for both source and target
+-            with self._acquire_file_lock(source_path), self._acquire_file_lock(target_path):
++            with (
++                self._acquire_file_lock(source_path),
++                self._acquire_file_lock(target_path),
++            ):
+                 # Create target directory if needed
+                 target_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+                 # Move file
+                 shutil.move(str(source_path), str(target_path))
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File moved successfully: {source_path.relative_to(self.config.base_path)} -> {target_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File moved successfully: {source_path.relative_to(self.config.base_path)} -> {target_path.relative_to(self.config.base_path)}",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error moving file: {str(e)}"
+-            )]
++            return [types.TextContent(type="text", text=f"Error moving file: {str(e)}")]
+ 
+     async def _compress_file(self, args: dict) -> List[types.TextContent]:
+         """Create ZIP archive from files."""
+-        archive_path = self._get_safe_path(args["archive_directory"], args["archive_path"])
++        archive_path = self._get_safe_path(
++            args["archive_directory"], args["archive_path"]
++        )
+ 
+         if archive_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Archive file already exists: {archive_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Archive file already exists: {archive_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         files = args["files"]
+         if not files:
+-            return [types.TextContent(
+-                type="text",
+-                text="No files specified for compression"
+-            )]
++            return [
++                types.TextContent(
++                    type="text", text="No files specified for compression"
++                )
++            ]
+ 
+         try:
+             # Validate all source files first
+             source_paths = []
+             for file_info in files:
+-                file_path = self._get_safe_path(file_info["directory"], file_info["path"])
++                file_path = self._get_safe_path(
++                    file_info["directory"], file_info["path"]
++                )
+                 if not file_path.exists():
+-                    return [types.TextContent(
+-                        type="text",
+-                        text=f"Source file not found: {file_path.relative_to(self.config.base_path)}"
+-                    )]
++                    return [
++                        types.TextContent(
++                            type="text",
++                            text=f"Source file not found: {file_path.relative_to(self.config.base_path)}",
++                        )
++                    ]
+                 if not file_path.is_file():
+-                    return [types.TextContent(
+-                        type="text",
+-                        text=f"Source path is not a file: {file_path.relative_to(self.config.base_path)}"
+-                    )]
++                    return [
++                        types.TextContent(
++                            type="text",
++                            text=f"Source path is not a file: {file_path.relative_to(self.config.base_path)}",
++                        )
++                    ]
+                 source_paths.append(file_path)
+ 
+             # Create archive directory if needed
+             archive_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+             # Create ZIP archive with file locking
+             with self._acquire_file_lock(archive_path):
+-                with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
++                with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                     for i, file_path in enumerate(source_paths):
+                         with self._acquire_file_lock(file_path):
+                             # Use relative path within archive
+                             arcname = files[i]["path"]
+                             zipf.write(file_path, arcname)
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Archive created successfully: {archive_path.relative_to(self.config.base_path)} ({len(files)} files)"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Archive created successfully: {archive_path.relative_to(self.config.base_path)} ({len(files)} files)",
++                )
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error creating archive: {str(e)}"
+-            )]
++            return [
++                types.TextContent(type="text", text=f"Error creating archive: {str(e)}")
++            ]
+ 
+     async def _extract_file(self, args: dict) -> List[types.TextContent]:
+         """Extract ZIP archive to directory."""
+-        archive_path = self._get_safe_path(args["archive_directory"], args["archive_path"])
+-        extract_dir = self._get_safe_path(args["extract_directory"], args.get("extract_path", "."))
++        archive_path = self._get_safe_path(
++            args["archive_directory"], args["archive_path"]
++        )
++        extract_dir = self._get_safe_path(
++            args["extract_directory"], args.get("extract_path", ".")
++        )
+ 
+         if not archive_path.exists():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Archive file not found: {archive_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Archive file not found: {archive_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         if not archive_path.is_file():
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Archive path is not a file: {archive_path.relative_to(self.config.base_path)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Archive path is not a file: {archive_path.relative_to(self.config.base_path)}",
++                )
++            ]
+ 
+         try:
+             # Create extraction directory if needed
+             extract_dir.mkdir(parents=True, exist_ok=True)
+ 
+             extracted_files = []
+             with self._acquire_file_lock(archive_path):
+-                with zipfile.ZipFile(archive_path, 'r') as zipf:
++                with zipfile.ZipFile(archive_path, "r") as zipf:
+                     # Validate zip file
+                     zipf.testzip()
+ 
+                     # Extract all files
+                     for member in zipf.namelist():
+                         # Security check: prevent path traversal
+-                        if '..' in member or member.startswith('/'):
+-                            return [types.TextContent(
+-                                type="text",
+-                                text=f"Unsafe path in archive: {member}"
+-                            )]
++                        if ".." in member or member.startswith("/"):
++                            return [
++                                types.TextContent(
++                                    type="text",
++                                    text=f"Unsafe path in archive: {member}",
++                                )
++                            ]
+ 
+                         # Extract file
+                         zipf.extract(member, extract_dir)
+                         extracted_files.append(member)
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Archive extracted successfully to {extract_dir.relative_to(self.config.base_path)}: {len(extracted_files)} files"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Archive extracted successfully to {extract_dir.relative_to(self.config.base_path)}: {len(extracted_files)} files",
++                )
++            ]
+         except zipfile.BadZipFile:
+-            return [types.TextContent(
+-                type="text",
+-                text="Invalid or corrupted ZIP archive"
+-            )]
++            return [
++                types.TextContent(type="text", text="Invalid or corrupted ZIP archive")
++            ]
+         except Exception as e:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Error extracting archive: {str(e)}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text", text=f"Error extracting archive: {str(e)}"
++                )
++            ]
+ 
+     async def _file_lock(self, args: dict) -> List[types.TextContent]:
+         """Manage file locks."""
+         action = args["action"]
+ 
+         if action == "list_active":
+             if not self._file_locks:
+-                return [types.TextContent(
+-                    type="text",
+-                    text="No active file locks"
+-                )]
++                return [types.TextContent(type="text", text="No active file locks")]
+ 
+             lock_info = []
+             current_time = time.time()
+             for file_path, lock_data in self._file_locks.items():
+-                age = current_time - lock_data['timestamp']
++                age = current_time - lock_data["timestamp"]
+                 lock_info.append(f"  {file_path} (locked for {age:.1f}s)")
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Active file locks ({len(self._file_locks)}):\n" + "\n".join(lock_info)
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"Active file locks ({len(self._file_locks)}):\n"
++                    + "\n".join(lock_info),
++                )
++            ]
+ 
+         elif action == "status":
+             if "path" not in args or "directory" not in args:
+-                return [types.TextContent(
+-                    type="text",
+-                    text="path and directory required for status action"
+-                )]
++                return [
++                    types.TextContent(
++                        type="text",
++                        text="path and directory required for status action",
++                    )
++                ]
+ 
+             file_path = self._get_safe_path(args["directory"], args["path"])
+-            lock_file = file_path.with_suffix(file_path.suffix + '.lock')
++            lock_file = file_path.with_suffix(file_path.suffix + ".lock")
+ 
+             is_locked = str(file_path) in self._file_locks or lock_file.exists()
+             status = "locked" if is_locked else "unlocked"
+ 
+-            return [types.TextContent(
+-                type="text",
+-                text=f"File {file_path.relative_to(self.config.base_path)} is {status}"
+-            )]
++            return [
++                types.TextContent(
++                    type="text",
++                    text=f"File {file_path.relative_to(self.config.base_path)} is {status}",
++                )
++            ]
+ 
+         else:
+-            return [types.TextContent(
+-                type="text",
+-                text=f"Unknown lock action: {action}"
+-            )]
++            return [
++                types.TextContent(type="text", text=f"Unknown lock action: {action}")
++            ]
+ 
+     def _get_safe_path(self, directory: str, path: str) -> Path:
+         """Get safe file path within allowed directory."""
+         if directory not in self.config.allowed_directories:
+             raise ValueError(f"Directory not allowed: {directory}")
+@@ -840,6 +926,6 @@
+             if not str(resolved).startswith(str(base_resolved)):
+                 raise ValueError(f"Path escape attempt detected: {path}")
+ 
+             return resolved
+         except Exception as e:
+-            raise ValueError(f"Invalid path: {path} - {str(e)}")
+\ No newline at end of file
++            raise ValueError(f"Invalid path: {path} - {str(e)}")
+would reformat /mnt/blk/lostboy/mcp/fileio/file_ops.py
+
+Oh no! 💥 💔 💥
+9 files would be reformatted.

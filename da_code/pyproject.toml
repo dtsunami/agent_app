@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "da_code"
+version = "0.1.0"
+description = "Agentic CLI tool with LangChain and Azure OpenAI"
+authors = [
+    {name = "da_code", email = "daniel.tsunami@intel.com"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.9+"
+]
+
+dependencies = [
+    "langchain>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langchain-community>=0.1.0",
+    "langgraph>=0.1.0",
+    "pydantic>=2.0.0",
+    "aiohttp>=3.9.0",
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "pillow>=10.0.0",
+    "pyperclip>=1.8.0",
+    "azure-identity>=1.15.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "motor>=3.1.0",
+    "rich>=13.7.0",
+    "langchain_postgres",
+    "psycopg[binary]>=3.1.0",
+    "langgraph-checkpoint-postgres",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.0",
+]
+all = [
+    "da_code[dev]",
+]
+
+[project.scripts]
+da_code = "da_code.cli:main"
+code_agent = "da_code.cli:main"
+
+[project.urls]
+Repository = "https://github.com/dtsunami/naten/da_code"
+
+[tool.setuptools]
+package-dir = {"da_code" = "."}
+packages = ["da_code"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

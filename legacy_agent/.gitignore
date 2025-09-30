@@ -7,8 +7,3 @@ final
 logs
 .ipynb_checkpoints
 .vscode
-
-**/build
-**/*.egg-info
-da_sessions
-.prompt.history

@@ -1,0 +1,23 @@
+# MCP Servers Common Dependencies
+
+# Core MCP framework
+mcp>=1.0.0
+
+# Data validation and serialization
+pydantic>=2.0.0
+
+# Type hints support
+typing-extensions>=4.0.0
+
+# Async HTTP client for API calls
+httpx>=0.24.0
+
+# JSON handling
+jsonschema>=4.0.0
+
+# Development tools (uncomment for development)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# mypy>=1.0.0
+# ruff>=0.1.0

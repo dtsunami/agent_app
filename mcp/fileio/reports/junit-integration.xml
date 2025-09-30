@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="0.176" timestamp="2025-09-20T23:04:04.980219+00:00" hostname="naten"><testcase classname="tests.test_mcp_integration.TestMCPServerIntegration" name="test_mcp_initialize_flow" time="0.004"><failure message="AttributeError: 'async_generator' object has no attribute 'handle_mcp_request'">self = &lt;test_mcp_integration.TestMCPServerIntegration object at 0x7a8bf2c3df70&gt;
+mcp_server = &lt;async_generator object mcp_server at 0x7a8bf43d8860&gt;
+
+    async def test_mcp_initialize_flow(self, mcp_server: MCPFileIOServer):
+        """Test complete MCP initialization flow."""
+        # Test initialize request
+        init_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "clientInfo": {"name": "test-client", "version": "1.0.0"},
+            },
+        }
+    
+&gt;       response = await mcp_server.handle_mcp_request(init_request)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'async_generator' object has no attribute 'handle_mcp_request'
+
+tests/test_mcp_integration.py:32: AttributeError</failure></testcase><testcase classname="tests.test_mcp_integration.TestMCPServerIntegration" name="test_tools_list_flow" time="0.002"><failure message="AttributeError: 'async_generator' object has no attribute 'handle_initialize'">self = &lt;test_mcp_integration.TestMCPServerIntegration object at 0x7a8bf2c3c1d0&gt;
+mcp_server = &lt;async_generator object mcp_server at 0x7a8bf2cf7440&gt;
+
+    async def test_tools_list_flow(self, mcp_server: MCPFileIOServer):
+        """Test tools/list request flow."""
+        # Initialize first
+&gt;       await mcp_server.handle_initialize({})
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'async_generator' object has no attribute 'handle_initialize'
+
+tests/test_mcp_integration.py:45: AttributeError</failure></testcase><testcase classname="tests.test_mcp_integration.TestMCPServerIntegration" name="test_file_operations_workflow" time="0.003"><failure message="AttributeError: 'async_generator' object has no attribute 'handle_initialize'">self = &lt;test_mcp_integration.TestMCPServerIntegration object at 0x7a8bf2c3c770&gt;
+mcp_server = &lt;async_generator object mcp_server at 0x7a8bf2db1630&gt;
+sample_files = {'csv': {'content': 'name,age,city\nJohn,30,NYC\nJane,25,LA\n', 'path': PosixPath('/tmp/tmp8g4et5bk/ingress/data.csv')...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'path': PosixPath('/tmp/tmp8g4et5bk/ingress/large.txt')}, ...}
+
+    async def test_file_operations_workflow(
+        self, mcp_server: MCPFileIOServer, sample_files: dict
+    ):
+        """Test complete file operations workflow through MCP."""
+        # Initialize server
+&gt;       await mcp_server.handle_initialize({})
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'async_generator' object has no attribute 'handle_initialize'
+
+tests/test_mcp_integration.py:85: AttributeError</failure></testcase></testsuite></testsuites>

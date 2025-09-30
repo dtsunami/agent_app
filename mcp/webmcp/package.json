@@ -1,0 +1,39 @@
+{
+  "name": "webmcp-server",
+  "version": "1.0.0",
+  "description": "WebMCP - Browser automation MCP server using Playwright",
+  "main": "src/server.js",
+  "type": "module",
+  "bin": {
+    "webmcp": "./bin/webmcp.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "playwright",
+    "automation",
+    "da_code"
+  ],
+  "author": "da_code <daniel.tsunami@intel.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@playwright/mcp": "^0.0.40",
+    "commander": "^11.0.0",
+    "clipboardy": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dtsunami/naten/da_code"
+  }
+}
